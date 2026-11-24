@@ -1,0 +1,66 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>LiveListenerBus: from scheduler events to listener callbacks · Troubleshoot Spark</title><link rel="stylesheet" href="../style.css"><main class="reader"><nav><a href=".././#map">Diagnostic map</a> · <a href="../guide.html">Lifecycle</a> · <a href="../scenarios.html">Cases</a> · <a href="../components/index.html">Components</a></nav><h1 id="livelistenerbus-from-scheduler-events-to-listener-callbacks">LiveListenerBus: from scheduler events to listener callbacks</h1>
+<p><a href="index.html">component index</a></p>
+<p><code>DAGScheduler.taskEnded(...)</code> and <code>SparkListener.onTaskEnd(...)</code> sound alike but have different jobs. The first hands a completion to the scheduler so it can decide what to do next. The second notifies a subscriber about what happened. <code>LiveListenerBus</code> delivers those notifications <strong>inside the driver JVM</strong>. It is neither the scheduler&#39;s event loop nor the executor-to-driver RPC transport.</p>
+<h2 id="flow-at-a-glance">Flow at a glance</h2>
+<ol>
+<li><strong>DAG scheduler</strong>: While handling a task completion, the scheduler posts a task-end event.</li>
+<li><strong>Listener bus</strong>: The bus offers the event to each active queue without waiting for its listeners.</li>
+<li><strong>Queue threads</strong>: Each queue delivers accepted events in order, calling its listeners one at a time.</li>
+</ol>
+<blockquote>
+<p><strong>Watch for:</strong> A full <code>eventLog</code> queue can drop a task-end event even when the live UI shows the task as finished.</p>
+</blockquote>
+<details>
+<summary>Show the animated flow</summary>
+
+<p><img src="visuals/listener-bus.svg" alt="A task-end event reaches the status and event-log queues, whose threads call their listeners independently"></p>
+</details>
+
+<h2 id="a-task-completion-across-the-two-boundaries">A task completion, across the two boundaries</h2>
+<figure class="source-figure"><a href="../diagrams/components-listener-bus-1.svg" title="Open diagram at full size"><img loading="lazy" src="../diagrams/components-listener-bus-1.svg" alt="Sequence diagram for components listener bus; open to enlarge"></a><figcaption>Sequence diagram · <a href="../diagrams/components-listener-bus-1.svg">Open full size</a></figcaption><details><summary>Text equivalent</summary><pre>sequenceDiagram
+    participant T as TaskSetManager
+    participant D as DAGScheduler
+    participant Q as DAG scheduler event loop
+    participant L as LiveListenerBus
+    participant S as appStatus queue
+    participant F as eventLog queue
+    T-&gt;&gt;D: taskEnded with reason, result, accumulators and TaskInfo
+    D-&gt;&gt;Q: Enqueue CompletionEvent
+    Q-&gt;&gt;Q: Handle task completion
+    Q-&gt;&gt;L: Post SparkListenerTaskEnd
+    L-&gt;&gt;S: Offer event
+    L-&gt;&gt;F: Offer event if queue exists
+    S-&gt;&gt;S: Invoke status listeners on its dispatch thread
+    F-&gt;&gt;F: Invoke log listener on its own dispatch thread</pre></details></figure>
+<p>For example, when an orders map task finishes, <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/TaskSetManager.scala#L935-L953"><code>TaskSetManager</code> notifies the DAG scheduler</a>. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/DAGScheduler.scala#L549-L562"><code>taskEnded</code> enqueues a <code>CompletionEvent</code></a>, and the <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/DAGScheduler.scala#L5501-L5520">DAG event loop</a> handles it. The <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/DAGScheduler.scala#L3565-L3585">published <code>SparkListenerTaskEnd</code></a> contains stage and attempt IDs, task type, end reason, <code>TaskInfo</code> and metrics, <strong>not the returned task result</strong>. The scheduler does not wait for the UI row or event-log write. A management listener can take subsequent action, but its callback is not the scheduler&#39;s completion acknowledgement.</p>
+<h2 id="ownership-queues-and-delivery">Ownership, queues and delivery</h2>
+<p><code>SparkContext</code> <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/SparkContext.scala#L534-L543">creates the live bus and registers the status listener early</a>. Before <code>start</code>, posts accumulate in a driver-side list. Once the initial internal listeners and configured <code>spark.extraListeners</code> are registered, the context <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/SparkContext.scala#L3261-L3286">starts the bus</a>. It starts each existing queue, offers the buffered events to it, clears the startup buffer and registers bus metrics. Queues are <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/LiveListenerBus.scala#L64-L108">created on first subscription</a>. A listener added to an existing queue can receive events still waiting there, but the bus does not replay events already dispatched.</p>
+<table>
+<thead>
+<tr>
+<th>Named queue</th>
+<th>Consumers and output</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>appStatus</code></td>
+<td>The status listener updates the store that serves the <a href="spark-ui.html">live UI</a>. SQL can register another status listener here.</td>
+</tr>
+<tr>
+<td><code>eventLog</code></td>
+<td>When enabled, the <a href="event-log.html">event logger</a> serializes selected events to the application log.</td>
+</tr>
+<tr>
+<td><code>executorManagement</code></td>
+<td>The <a href="heartbeat-receiver.html">heartbeat receiver</a> watches executor add/remove events. With dynamic allocation, the allocation listener and <a href="executor-monitor.html">monitor</a> also consume events here.</td>
+</tr>
+<tr>
+<td><code>shared</code></td>
+<td>User listeners, including <code>spark.extraListeners</code>, receive callbacks without running on the scheduler&#39;s thread.</td>
+</tr>
+</tbody></table>
+<p><code>post</code> <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/LiveListenerBus.scala#L126-L183">offers the same event to every current queue</a>. Each has a bounded FIFO and a single <code>spark-listener-group-&lt;name&gt;</code> daemon. That daemon takes one event, invokes the listeners in that queue serially, then takes the next. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/SparkListenerBus.scala#L25-L104"><code>SparkListenerBus</code> selects the typed callback</a> (<code>onTaskEnd</code>, <code>onExecutorAdded</code>, etc.); unmatched event types go to <code>onOtherEvent</code>. FIFO is per queue, not a global ordering or completion barrier across threads. A slow status listener can delay other status listeners without waiting for the event logger.</p>
+<h2 id="delivery-limits-and-shutdown">Delivery limits and shutdown</h2>
+<p>The <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/AsyncEventQueue.scala#L168-L205">enqueue operation</a> is a non-blocking <code>offer</code>. If a queue is full, the new event is <strong>dropped for that queue</strong>; there is no retry or request to slow a scheduler. Thus a stage can appear in the live UI but be missing from history, or vice versa. For a discrepancy, check the named queue in the driver warning and its <code>queue.&lt;name&gt;.numDroppedEvents</code>, <code>.size</code> and <code>.listenerProcessingTime</code> <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/AsyncEventQueue.scala#L50-L117">metrics</a>. <code>numEventsPosted</code> counts bus posts, not deliveries. The <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/internal/config/package.scala#L1121-L1131">capacity setting</a> can be overridden per queue; increasing it buys time but does not fix a persistently slow listener.</p>
+<p>An exception in one callback is normally logged and dispatch continues; <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/util/ListenerBus.scala#L102-L142">an interrupted listener is removed</a>. On orderly shutdown <code>SparkContext</code> <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/SparkContext.scala#L2638-L2670">posts application end, then stops the bus</a>. New posts are ignored; each queue puts a stop marker behind queued events and waits for its thread (indefinitely by default, or up to the <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/AsyncEventQueue.scala#L139-L165">configured join timeout</a>). A driver crash provides no such drain. The <a href="history-server.html">History Server</a> uses a separate, synchronous replay bus, not these live queues.</p>
+</main></html>

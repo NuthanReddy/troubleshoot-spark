@@ -1,0 +1,57 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Spark History Server: rebuilding an application view from files · Troubleshoot Spark</title><link rel="stylesheet" href="../style.css"><main class="reader"><nav><a href=".././#map">Diagnostic map</a> · <a href="../guide.html">Lifecycle</a> · <a href="../scenarios.html">Cases</a> · <a href="../components/index.html">Components</a></nav><h1 id="spark-history-server-rebuilding-an-application-view-from-files">Spark History Server: rebuilding an application view from files</h1>
+<p><a href="index.html">component index</a></p>
+<p>The History Server is an <strong>optional, separate JVM service</strong> for many Spark applications. It can run before, during or after any particular YARN application. It does not receive executor heartbeats, contact a dead driver for its status store, restart jobs, or serve as the YARN ResourceManager. Its input is the driver&#39;s <a href="event-log.html">event log</a>; its output is an application/attempt listing and reconstructed web and REST views.</p>
+<h2 id="flow-at-a-glance">Flow at a glance</h2>
+<ol>
+<li><strong>Log scan</strong>: The server scans the shared log directory and lists attempts from application events.</li>
+<li><strong>Attempt lookup</strong>: On a cache miss, the provider reuses a saved store or rebuilds one by replaying the attempt&#39;s log.</li>
+<li><strong>History page</strong>: The server reads that attempt&#39;s store to show recorded stages and tasks without a running driver.</li>
+</ol>
+<blockquote>
+<p><strong>Watch for:</strong> An attempt can still appear in progress if the driver died before writing the application-end event.</p>
+</blockquote>
+<details>
+<summary>Show the animated flow</summary>
+
+<p><img src="visuals/history-server.svg" alt="The History Server discovers an attempt and can replay its saved events to rebuild stage and task views"></p>
+</details>
+
+<h2 id="who-starts-it-and-what-it-needs">Who starts it and what it needs</h2>
+<p>A cluster operator or service manager starts and stops the daemon, not <code>spark-submit</code>, <code>SparkContext</code> or the AM. Spark provides <code>start-history-server.sh</code> and <code>stop-history-server.sh</code>. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/deploy/history/HistoryServer.scala#L290-L326"><code>HistoryServer.main</code></a> creates the configured <code>ApplicationHistoryProvider</code>, binds the web server (default <code>spark.history.ui.port=18080</code>), starts the provider and installs a shutdown hook. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/deploy/history/HistoryServer.scala#L151-L205"><code>HistoryServer.stop()</code></a> stops the web server and provider; the filesystem provider <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/deploy/history/FsHistoryProvider.scala#L526-L549">stops its workers and closes stores</a>.</p>
+<p>The usual <code>FsHistoryProvider</code> needs read access to the same underlying filesystem location the driver wrote to: set the application&#39;s <code>spark.eventLog.dir</code> and the server&#39;s <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/internal/config/History.scala#L29-L57"><code>spark.history.fs.logDirectory</code></a> accordingly. The server does not enable event logging for applications. It has two different jobs:</p>
+<table>
+<thead>
+<tr>
+<th>Path</th>
+<th>Input, state and output</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Discover attempts</strong></td>
+<td>The provider <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/deploy/history/FsHistoryProvider.scala#L329-L373">periodically scans</a> accessible log roots. <code>EventLogFileReader</code> recognizes a single log or a rolling directory; the provider tracks file size, segment index and completion state to <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/deploy/history/FsHistoryProvider.scala#L634-L699">decide what changed</a>. A <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/deploy/history/FsHistoryProvider.scala#L1060-L1092">listing replay</a> filters for log start, application start/end and environment records. It indexes app and attempt metadata rather than building a task table for every app.</td>
+</tr>
+<tr>
+<td><strong>Open one attempt</strong></td>
+<td>A browser request under <code>/history/&lt;appId&gt;/&lt;attemptId&gt;/</code> or an API lookup goes through the application cache. On a miss, the provider <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/deploy/history/FsHistoryProvider.scala#L414-L456">selects the recorded attempt</a>, tries a valid local disk store if configured, otherwise builds the needed store from the log. A bounded <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/deploy/history/ApplicationCache.scala#L53-L142">cache keyed by app and optional attempt ID</a> reuses attached UIs. Eviction detaches handlers; it is not deletion of the event log.</td>
+</tr>
+</tbody></table>
+<h2 id="how-replay-constructs-a-ui-without-a-driver">How replay constructs a UI without a driver</h2>
+<figure class="source-figure"><a href="../diagrams/components-history-server-1.svg" title="Open diagram at full size"><img loading="lazy" src="../diagrams/components-history-server-1.svg" alt="Sequence diagram for components history server; open to enlarge"></a><figcaption>Sequence diagram · <a href="../diagrams/components-history-server-1.svg">Open full size</a></figcaption><details><summary>Text equivalent</summary><pre>sequenceDiagram
+    participant C as Attempt cache
+    participant F as FsHistoryProvider
+    participant L as Event log files
+    participant R as ReplayListenerBus
+    participant K as Per-attempt status store
+    C-&gt;&gt;F: Load app and attempt
+    Note over F,K: On a store miss
+    F-&gt;&gt;L: Open ordered segments and decompress if necessary
+    L--&gt;&gt;R: One JSON event per line
+    R-&gt;&gt;K: Invoke replay status listeners to update records
+    F-&gt;&gt;K: Flush replay state for reads
+    F--&gt;&gt;C: SparkUI with this store and no SparkContext
+    C-&gt;&gt;C: Attach handlers under the history server</pre></details></figure>
+<p><a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/deploy/history/FsHistoryProvider.scala#L1428-L1477"><code>rebuildAppStore</code></a> creates <code>ReplayListenerBus</code>, an <code>AppStatusListener(live=false, lastUpdateTime=...)</code> and any plugin listeners. It reads <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/deploy/history/EventLogFileReaders.scala#L220-L258">ordered segments</a>; replay decodes each accepted line with <code>JsonProtocol</code> and dispatches it synchronously. There is <strong>no live scheduler callback and no live async queue</strong>. Closing the tracking wrapper <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/status/ElementTrackingStore.scala#L170-L191">flushes pending state without closing the underlying store</a>. The provider constructs <code>SparkUI</code> with <code>None</code> instead of a <code>SparkContext</code>; the history server attaches its handlers to the existing HTTP server. For SQL, the <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/ui/SQLHistoryServerPlugin.scala#L25-L35">history plugin</a> installs a replay listener and adds a SQL tab if it found executions. Similar screens to the <a href="spark-ui.html">live UI</a> do not imply identical evidence or working job controls.</p>
+<h2 id="worked-example-an-application-listed-as-incomplete">Worked example: an application listed as incomplete</h2>
+<p>Suppose the orders driver flushed a stage-completed record and then its container was killed before writing application end or finalizing the log. On a later scan the listing can show the app as in progress. Opening that attempt can show the completed stage and the tasks whose records survived; it <strong>cannot</strong> establish that the Parquet write committed or that the driver is still alive. Check the YARN attempt diagnostics and the output commit evidence for those questions. If a running writer instead finalizes the log later, a scan can <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/deploy/history/FsHistoryProvider.scala#L1119-L1149">invalidate the stale UI</a>; a subsequent load can reflect the new records.</p>
+<p><strong>Diagnosing missing history:</strong> an empty listing calls for checking log location, permissions, scan interval and whether the driver wrote application start; a listed attempt whose first detail page is slow may simply be replaying a cold log. A partial final JSON line in a possibly truncated log can be tolerated; <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/ReplayListenerBus.scala#L207-L262">malformed JSON midstream raises an error, while unknown event classes are skipped with warnings</a>. A fresh replay cannot recover events dropped before write, unlogged stdout/stderr or records removed by optional <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/deploy/history/EventLogFileCompactor.scala#L39-L79">rolling-log compaction</a> or the <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/internal/config/History.scala#L84-L109">filesystem cleaner</a>. The cache is not an archive.</p>
+</main></html>

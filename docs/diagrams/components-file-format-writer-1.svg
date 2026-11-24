@@ -1,0 +1,84 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 751.3129999999999 510" width="751.3129999999999" height="510" style="--bg:#101d2e;--fg:#ecf3f8;--line:#839ab5;--accent:#93e3d1;background:var(--bg)">
+<style>
+  text { font-family: 'system-ui', system-ui, sans-serif; }
+  svg {
+    /* Derived from --bg and --fg (overridable via --line, --accent, etc.) */
+    --_text:          var(--fg);
+    --_text-sec:      var(--muted, color-mix(in srgb, var(--fg) 60%, var(--bg)));
+    --_text-muted:    var(--muted, color-mix(in srgb, var(--fg) 40%, var(--bg)));
+    --_text-faint:    color-mix(in srgb, var(--fg) 25%, var(--bg));
+    --_line:          var(--line, color-mix(in srgb, var(--fg) 50%, var(--bg)));
+    --_arrow:         var(--accent, color-mix(in srgb, var(--fg) 85%, var(--bg)));
+    --_node-fill:     var(--surface, color-mix(in srgb, var(--fg) 3%, var(--bg)));
+    --_node-stroke:   var(--border, color-mix(in srgb, var(--fg) 20%, var(--bg)));
+    --_group-fill:    var(--bg);
+    --_group-hdr:     color-mix(in srgb, var(--fg) 5%, var(--bg));
+    --_inner-stroke:  color-mix(in srgb, var(--fg) 12%, var(--bg));
+    --_key-badge:     color-mix(in srgb, var(--fg) 10%, var(--bg));
+  }
+</style>
+<defs>
+  <marker id="seq-arrow" markerWidth="8" markerHeight="5" refX="8" refY="2.5" orient="auto-start-reverse">
+    <polygon points="0 0, 8 2.5, 0 5" fill="var(--_arrow)" />
+  </marker>
+  <marker id="seq-arrow-open" markerWidth="8" markerHeight="5" refX="8" refY="2.5" orient="auto-start-reverse">
+    <polyline points="0 0, 8 2.5, 0 5" fill="none" stroke="var(--_arrow)" stroke-width="1" />
+  </marker>
+</defs>
+<line class="lifeline" data-actor="C" x1="109.5895" y1="70" x2="109.5895" y2="480" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" />
+<line class="lifeline" data-actor="F" x1="296.1715" y1="70" x2="296.1715" y2="480" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" />
+<line class="lifeline" data-actor="T" x1="476.455" y1="70" x2="476.455" y2="480" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" />
+<line class="lifeline" data-actor="H" x1="652.2925" y1="70" x2="652.2925" y2="480" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" />
+<g class="message" data-from="C" data-to="F" data-label="Plan, format, output spec, options, protocol" data-line-style="solid" data-arrow-head="filled" data-self="false">
+  <line x1="109.5895" y1="90" x2="296.1715" y2="90" stroke="var(--_line)" stroke-width="1" marker-end="url(#seq-arrow)" />
+  <text x="202.88049999999998" y="80" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">Plan, format, output spec, options, protocol</text>
+</g>
+<g class="message" data-from="F" data-to="H" data-label="setupJob on driver" data-line-style="solid" data-arrow-head="filled" data-self="false">
+  <line x1="296.1715" y1="130" x2="652.2925" y2="130" stroke="var(--_line)" stroke-width="1" marker-end="url(#seq-arrow)" />
+  <text x="474.23199999999997" y="120" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">setupJob on driver</text>
+</g>
+<g class="message" data-from="F" data-to="T" data-label="Run partition 7 with write description" data-line-style="solid" data-arrow-head="filled" data-self="false">
+  <line x1="296.1715" y1="170" x2="476.455" y2="170" stroke="var(--_line)" stroke-width="1" marker-end="url(#seq-arrow)" />
+  <text x="386.31325" y="160" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">Run partition 7 with write description</text>
+</g>
+<g class="message" data-from="T" data-to="H" data-label="setupTask and request paths for new files" data-line-style="solid" data-arrow-head="filled" data-self="false">
+  <line x1="476.455" y1="210" x2="652.2925" y2="210" stroke="var(--_line)" stroke-width="1" marker-end="url(#seq-arrow)" />
+  <text x="564.37375" y="200" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">setupTask and request paths for new files</text>
+</g>
+<g class="message" data-from="T" data-to="T" data-label="Encode data rows and close format writers" data-line-style="solid" data-arrow-head="filled" data-self="true">
+  <polyline points="476.455,250 506.455,250 506.455,270 476.455,270" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#seq-arrow)" />
+  <text x="514.4549999999999" y="260" font-size="11" text-anchor="start" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">Encode data rows and close format writers</text>
+</g>
+<g class="message" data-from="T" data-to="H" data-label="commitTask on executor" data-line-style="solid" data-arrow-head="filled" data-self="false">
+  <line x1="476.455" y1="320" x2="652.2925" y2="320" stroke="var(--_line)" stroke-width="1" marker-end="url(#seq-arrow)" />
+  <text x="564.37375" y="310" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">commitTask on executor</text>
+</g>
+<g class="message" data-from="T" data-to="F" data-label="Commit message and partition stats" data-line-style="dashed" data-arrow-head="filled" data-self="false">
+  <line x1="476.455" y1="360" x2="296.1715" y2="360" stroke="var(--_line)" stroke-width="1" stroke-dasharray="6 4" marker-end="url(#seq-arrow)" />
+  <text x="386.31325" y="350" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">Commit message and partition stats</text>
+</g>
+<g class="message" data-from="F" data-to="H" data-label="onTaskCommit, then commitJob when all results arrive" data-line-style="solid" data-arrow-head="filled" data-self="false">
+  <line x1="296.1715" y1="400" x2="652.2925" y2="400" stroke="var(--_line)" stroke-width="1" marker-end="url(#seq-arrow)" />
+  <text x="474.23199999999997" y="390" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">onTaskCommit, then commitJob when all results arrive</text>
+</g>
+<g class="message" data-from="F" data-to="C" data-label="Updated partition paths" data-line-style="dashed" data-arrow-head="filled" data-self="false">
+  <line x1="296.1715" y1="440" x2="109.5895" y2="440" stroke="var(--_line)" stroke-width="1" stroke-dasharray="6 4" marker-end="url(#seq-arrow)" />
+  <text x="202.88049999999998" y="430" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">Updated partition paths</text>
+</g>
+<g class="actor" data-id="C" data-label="V1 command on driver" data-type="participant">
+  <rect x="30" y="30" width="159.179" height="40" rx="4" ry="4" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <text x="109.5895" y="50" font-size="13" text-anchor="middle" font-weight="500" fill="var(--_text)" dy="4.55">V1 command on driver</text>
+</g>
+<g class="actor" data-id="F" data-label="FileFormatWriter" data-type="participant">
+  <rect x="229.17899999999997" y="30" width="133.985" height="40" rx="4" ry="4" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <text x="296.1715" y="50" font-size="13" text-anchor="middle" font-weight="500" fill="var(--_text)" dy="4.55">FileFormatWriter</text>
+</g>
+<g class="actor" data-id="T" data-label="Executor write task" data-type="participant">
+  <rect x="403.164" y="30" width="146.582" height="40" rx="4" ry="4" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <text x="476.455" y="50" font-size="13" text-anchor="middle" font-weight="500" fill="var(--_text)" dy="4.55">Executor write task</text>
+</g>
+<g class="actor" data-id="H" data-label="Commit protocol" data-type="participant">
+  <rect x="589.746" y="30" width="125.093" height="40" rx="4" ry="4" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <text x="652.2925" y="50" font-size="13" text-anchor="middle" font-weight="500" fill="var(--_text)" dy="4.55">Commit protocol</text>
+</g>
+</svg>

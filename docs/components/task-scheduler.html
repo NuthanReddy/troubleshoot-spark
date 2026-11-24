@@ -1,0 +1,148 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>TaskSchedulerImpl: matching ready task sets to executors · Troubleshoot Spark</title><link rel="stylesheet" href="../style.css"><main class="reader"><nav><a href=".././#map">Diagnostic map</a> · <a href="../guide.html">Lifecycle</a> · <a href="../scenarios.html">Cases</a> · <a href="../components/index.html">Components</a></nav><h1 id="taskschedulerimpl-matching-ready-task-sets-to-executors">TaskSchedulerImpl: matching ready task sets to executors</h1>
+<p><a href="index.html">component index</a> · Driver JVM · Apache Spark <code>dada2a6</code></p>
+<h2 id="overview">Overview</h2>
+<p><code>TaskSchedulerImpl</code> answers <strong>which task set gets the next compatible executor
+offer?</strong> Its <a href="dag-scheduler.html">DAG scheduler</a> submits ready stage attempts.
+The <a href="driver-scheduler-backend.html">driver backend</a> supplies executor offers.
+A <a href="task-set-manager.html">TaskSetManager</a> chooses a partition attempt on each
+eligible offer. The task scheduler returns descriptions to the backend; it
+neither sends <code>LaunchTask</code> itself nor obtains containers from YARN.</p>
+<h2 id="flow-at-a-glance">Flow at a glance</h2>
+<ol>
+<li><strong>Driver backend</strong>: Offers two free CPUs on executor 3.</li>
+<li><strong>Task scheduler</strong>: Asks eligible task set managers for work in pool order.</li>
+<li><strong>First match</strong>: A one-CPU task leaves one CPU for another match in this round.</li>
+</ol>
+<blockquote>
+<p><strong>Key distinction:</strong> An offer describes capacity on an existing executor, not a new grant from YARN.</p>
+</blockquote>
+<details>
+<summary>Show the animated flow</summary>
+
+<p><img src="visuals/task-scheduler.svg" alt="Executor 3 offers two CPUs and one task takes one CPU from the round's budget"></p>
+</details>
+
+<h2 id="requirements-analysis">Requirements analysis</h2>
+<p>Arbitrate across concurrent jobs, respect pool policy, CPU and custom resource
+requirements, and let locality delay a launch without consuming a slot. Track
+attempts by ID even when a stage is retried. Prevent a slow result fetch from
+blocking scheduling on the driver. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/TaskSchedulerImpl.scala#L52-L148">Scheduling contract</a> ·
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/TaskSchedulerImpl.scala#L540-L554">resource fit</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/TaskResultGetter.scala#L33-L124">result fetching</a>.</p>
+<h2 id="component-architecture-and-lifetime">Component architecture and lifetime</h2>
+<p>For master <code>yarn</code>, <code>SparkContext</code> asks <code>YarnClusterManager</code> for a scheduler,
+backend and initialization. Client mode gets <code>YarnScheduler</code> (a
+<code>TaskSchedulerImpl</code> with rack lookup); cluster mode gets <code>YarnClusterScheduler</code>,
+which also signals <code>ApplicationMaster.sparkContextInitialized(sc)</code> before the
+normal readiness wait. <code>initialize</code> builds the scheduling pools. <code>start</code> starts
+the backend and, if enabled, the speculation timer. <code>postStartHook</code> waits on
+<code>backend.isReady()</code>, <strong>not</strong> on a particular stage&#39;s inputs. <code>DAGScheduler.stop</code>
+calls <code>stop(exitCode)</code>, which stops the backend, result getter, timers and any
+barrier coordinator. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/scheduler/cluster/YarnClusterManager.scala#L26-L56">YARN factory</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/scheduler/cluster/YarnScheduler.scala#L27-L39">YARN scheduler</a> ·
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/scheduler/cluster/YarnClusterScheduler.scala#L27-L35">cluster hook</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/TaskSchedulerImpl.scala#L262-L297">initialization</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/TaskSchedulerImpl.scala#L1257-L1271">wait</a> ·
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/DAGScheduler.scala#L5422-L5437">shutdown caller</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/TaskSchedulerImpl.scala#L1018-L1040">shutdown work</a>.</p>
+<h2 id="data-models-and-concurrency">Data models and concurrency</h2>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>(stageId, stageAttemptId)</code></td>
+<td>Identifies a <code>TaskSetManager</code>. Replacement makes older managers for that stage zombies: they accept no new work but may still receive results.</td>
+</tr>
+<tr>
+<td>TID (<code>Long</code>)</td>
+<td>Allocated by <code>newTaskId()</code> for a launch. <code>taskIdToTaskSetManager</code>, <code>taskIdToExecutorId</code> and <code>executorIdToRunningTaskIds</code> route updates and clean up a lost executor. A partition index is not a TID.</td>
+</tr>
+<tr>
+<td><code>WorkerOffer</code>, <code>availableCpus(i)</code>, <code>availableResources(i)</code></td>
+<td>A snapshot plus a temporary <em>per-round</em> budget. CPU uses exact <code>BigDecimal</code> in this revision. The <a href="driver-scheduler-backend.html">backend</a> owns the persistent free-core and resource-address counters.</td>
+</tr>
+</tbody></table>
+<p>The driver event loop, backend RPC thread, speculation timer and result-getter
+workers enter this object from different threads. Scheduling, manager state
+transitions and task-set pool removal use the scheduler monitor. <code>submitTasks</code>
+releases it before calling <code>reviveOffers</code>; result deserialization runs on the
+result-getter pool before it calls back under the monitor. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/TaskSchedulerImpl.scala#L52-L148">Indexes and lock
+contract</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/TaskSchedulerImpl.scala#L299-L351">submission</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/TaskSchedulerImpl.scala#L525-L532">attempt routing</a> ·
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/TaskSchedulerImpl.scala#L956-L993">completion callbacks</a>.</p>
+<h2 id="design-patterns-used">Design patterns used</h2>
+<p><strong>Composite (structural) + Strategy (behavioral).</strong> A <code>Pool</code> sorts its children
+and recursively collects schedulable manager leaves. FIFO compares priority
+(the submitting job ID on this path), then stage ID. FAIR favors a child below
+its minimum share; if both are below, it compares running tasks relative to
+minimum share, otherwise relative to weight. Ties break by name. Switching
+the comparator changes <em>who gets first choice</em>,
+not the checks for placing a task. Unlike a single global FIFO queue this can
+share slots between configured pools, at the cost of sorting and traversal on
+an offer round. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/Pool.scala#L105-L127">Pool traversal</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/SchedulingAlgorithm.scala#L25-L69">comparators</a> ·
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/DAGScheduler.scala#L3475-L3490">job ID as priority</a>.</p>
+<h2 id="apiinterface-definitions">API/interface definitions</h2>
+<table>
+<thead>
+<tr>
+<th>Input and caller</th>
+<th>Output and recipient</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>DAGScheduler</code> → <code>submitTasks(taskSet)</code></td>
+<td>Creates/registers a manager, adds it to a pool, and asks the backend to revive offers. It does not synchronously return task results. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/TaskSchedulerImpl.scala#L299-L351">Submission</a></td>
+</tr>
+<tr>
+<td><code>DriverEndpoint</code> → <code>resourceOffers(offers, isAllFreeResources)</code></td>
+<td><code>Seq[Seq[TaskDescription]]</code>, grouped by offered executor in the scheduler&#39;s filtered/shuffled order. Each description names its executor; the backend flattens and launches them. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/TaskSchedulerImpl.scala#L573-L631">Offer pass</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/TaskSchedulerImpl.scala#L816-L825">return shape</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/cluster/CoarseGrainedSchedulerBackend.scala#L457-L486">backend consumption</a></td>
+</tr>
+<tr>
+<td><code>DriverEndpoint</code> → <code>statusUpdate(tid, state, bytes)</code></td>
+<td><code>RUNNING</code> confirms launch; terminal states remove TID routing/running state and enqueue success/failure work in the <a href="task-result-getter.html">TaskResultGetter</a>. The getter calls <code>handleSuccessfulTask</code> or <code>handleFailedTask</code> with the captured manager. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/TaskSchedulerImpl.scala#L865-L894">Status dispatch</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/TaskSchedulerImpl.scala#L956-L993">result callbacks</a></td>
+</tr>
+<tr>
+<td><code>DAGScheduler</code> → <code>killAllTaskAttempts(stageId, interruptThread, reason)</code></td>
+<td>Sends <code>backend.killTask</code> for known running TIDs across <strong>all attempts</strong> of that stage and suspends their managers. Completion and cleanup need not be synchronous with the kill. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/TaskSchedulerImpl.scala#L374-L443">Cancellation and removal</a></td>
+</tr>
+</tbody></table>
+<h2 id="implementation-notes-one-offer-round">Implementation notes: one offer round</h2>
+<ol>
+<li>Suppose executor <code>3</code> offers two free CPUs under a compatible profile. The
+scheduler learns the host/executor mapping, filters application-wide
+exclusions, shuffles the remaining offers, and obtains the pool&#39;s sorted
+task sets. This offer describes an already-registered executor, not two
+newly granted YARN vcores. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/TaskSchedulerImpl.scala#L573-L631">Build round</a>.</li>
+<li>For a one-CPU task with no custom resource, the scheduler asks the first
+eligible manager for work on <code>3</code> at the current locality. On acceptance it
+records the TID and decrements the <strong>round&#39;s</strong> CPU budget to one. On
+rejection no assignment is charged. It tries each executor at that locality
+and repeats while it can launch, then considers broader locality levels.
+A profile mismatch, unavailable GPU address or exhausted CPU budget can
+prevent even asking the manager. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/TaskSchedulerImpl.scala#L468-L510">Match and debit</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/TaskSchedulerImpl.scala#L540-L554">fit</a> ·
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/TaskSchedulerImpl.scala#L632-L687">round iteration</a>.</li>
+<li>The backend sends the descriptions. A later <code>FINISHED</code> status can make the
+executor offer capacity again <strong>before</strong> the partition result is accepted.
+For an indirect result the getter reads a block; if it has disappeared,
+<code>TaskResultLost</code> goes through failure handling despite that <code>FINISHED</code>
+report. A still-live manager with an unfinished partition can then trigger
+another <code>reviveOffers</code>. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/cluster/CoarseGrainedSchedulerBackend.scala#L179-L198">Terminal status/offer</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/TaskResultGetter.scala#L33-L124">indirect results</a> ·
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/TaskSchedulerImpl.scala#L956-L993">retry decision</a>.</li>
+</ol>
+<p><strong>Late status and executor loss.</strong> A duplicate/late status for a TID no longer
+in the routing map is logged and ignored here. That differs from a useful
+older <em>stage-attempt</em> success: the DAG scheduler can notify the active manager
+by <code>(stageId, partitionId)</code> to skip redundant work. On <code>LossReasonPending</code> the
+scheduler cleans TID routing but preserves the executor-to-host mapping; it
+notifies the pool of the loss when a concrete reason is available. That
+distinction matters to per-task retry accounting on YARN.
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/TaskSchedulerImpl.scala#L865-L894">Unknown TID</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/TaskSchedulerImpl.scala#L956-L993">partition notification</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/TaskSchedulerImpl.scala#L1154-L1189">two-phase loss</a>.</p>
+<h2 id="scalability-and-performance-considerations">Scalability and performance considerations</h2>
+<p>Large sets of offers, locality passes and serialization in the manager all
+consume time under the scheduling lock. A single-executor offer need not scan
+every executor. Barrier sets are different: the scheduler checks the whole
+set fits and, on the normal non-legacy path, gives back provisional assignments
+instead of launching half a set. <strong>Diagnostic:</strong> if the driver reports that it
+skipped a barrier round, compare the <em>required and available compatible slots</em>
+in that log; a running YARN application or a large total core count does not
+satisfy a simultaneous free-slot requirement. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/cluster/CoarseGrainedSchedulerBackend.scala#L402-L455">Offer scope</a> ·
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/TaskSchedulerImpl.scala#L632-L687">barrier admission</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/TaskSchedulerImpl.scala#L738-L803">provisional rollback</a>.</p>
+</main></html>

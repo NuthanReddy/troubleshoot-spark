@@ -1,0 +1,118 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>HDFS NameNode: resolving a path without touching its bytes · Troubleshoot Spark</title><link rel="stylesheet" href="../style.css"><main class="reader"><nav><a href=".././#map">Diagnostic map</a> · <a href="../guide.html">Lifecycle</a> · <a href="../scenarios.html">Cases</a> · <a href="../components/index.html">Components</a></nav><h1 id="hdfs-namenode-resolving-a-path-without-touching-its-bytes">HDFS NameNode: resolving a path without touching its bytes</h1>
+<p><a href="index.html">component index</a> | <a href="../guide.html">PySpark on YARN walkthrough</a></p>
+<p>For <code>hdfs:///warehouse/orders</code>, the NameNode answers <strong>which files exist,
+which blocks cover a byte range, and where those blocks are reported</strong>. The
+executor reads the Parquet bytes from a <a href="hdfs-datanode.html">DataNode</a>. This
+page follows ordinary replicated files in one HDFS nameservice, not erasure
+coding, WebHDFS, or Spark shuffle storage.</p>
+<h2 id="flow-at-a-glance">Flow at a glance</h2>
+<ol>
+<li><strong>HDFS client</strong>: Ask where to read byte 4096 of an orders part file.</li>
+<li><strong>NameNode</strong>: Return block 123 and its reported replica addresses on DataNodes A and B.</li>
+<li><strong>DataNode A</strong>: Serve the requested range directly to the client that chose A.</li>
+</ol>
+<blockquote>
+<p><strong>Key distinction:</strong> The NameNode supplies block locations; the chosen DataNode supplies the Parquet bytes.</p>
+</blockquote>
+<details>
+<summary>Show the animated flow</summary>
+
+<p><img src="visuals/hdfs-namenode.svg" alt="The NameNode maps offset 4096 to block 123 on A or B; the client reads from A."></p>
+</details>
+
+<h2 id="runtime-boundary-and-state">Runtime boundary and state</h2>
+<p>The NameNode is a long-lived Hadoop service, started, monitored, and stopped by
+cluster operations, not by YARN or Spark. In an HA nameservice one active NameNode
+owns namespace mutations; configured failover can promote a standby. With
+Quorum Journal Manager, the active writes edits to a majority of JournalNodes,
+the standby tails edits, and DataNodes report to the NameNodes. A second copy
+of the namespace is not a second copy of the Parquet data.</p>
+<table>
+<thead>
+<tr>
+<th>State held by the NameNode</th>
+<th>How it changes</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Directory tree and file inodes: names, ownership, permissions, replication policy, and each file&#39;s ordered block IDs</td>
+<td>Namespace operations update memory and journal edits; an <code>fsimage</code> checkpoint plus subsequent edits reconstructs the namespace on restart.</td>
+</tr>
+<tr>
+<td>Block locations: block ID to reported DataNode storage replicas, with node health and capacity</td>
+<td>DataNode registrations, heartbeats, and full/incremental block reports maintain this live map. An <code>fsimage</code> is not an inventory of which disks are alive today.</td>
+</tr>
+<tr>
+<td>Files under construction, writer leases, and block progress</td>
+<td><code>create</code> establishes a writer; lease renewals keep it live. <code>addBlock</code> attaches blocks; <code>complete</code> checks progress before finalizing. If a writer disappears, lease recovery can reconcile the last block rather than treating an unfinished file as closed.</td>
+</tr>
+</tbody></table>
+<h2 id="peer-contracts">Peer contracts</h2>
+<table>
+<thead>
+<tr>
+<th>Path</th>
+<th>Input</th>
+<th>Output or decision</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Hadoop filesystem client to <code>ClientProtocol</code> (Hadoop RPC)</td>
+<td><code>getListing(path, startAfter, needLocation)</code>; <code>getBlockLocations(path, offset, length)</code></td>
+<td>A batch of directory entries, or <code>LocatedBlocks</code> covering the requested range. A located block supplies identity, file offset, replica endpoints, and a block access token when enabled. No data packets.</td>
+</tr>
+<tr>
+<td>Writer to the same RPC service</td>
+<td><code>create(path, permissions, clientName, flags, ..., replication, blockSize, ...)</code>; <code>addBlock(path, clientName, previous, excludedNodes, fileId, ...)</code></td>
+<td>File status for the new file, then a <code>LocatedBlock</code> with selected targets. Placement considers eligible storage, rack topology, policy, and failed/excluded nodes; a target is not evidence that its bytes have been written.</td>
+</tr>
+<tr>
+<td>Writer closing or publishing a file</td>
+<td><code>complete(path, clientName, lastBlock, fileId)</code>; a rename-based output committer may later request a rename</td>
+<td><code>complete</code> returns a boolean; <code>false</code> can mean the caller must retry while block progress catches up. A successful rename changes namespace entries, not the location of every replica. Spark&#39;s dataset commit is separate from closing one file.</td>
+</tr>
+<tr>
+<td>DataNodes to <code>DatanodeProtocol</code> (Hadoop RPC)</td>
+<td><code>sendHeartbeat</code> gives health/capacity information; <code>blockReport</code> gives inventory; <code>blockReceivedAndDeleted</code> reports changes</td>
+<td>Reconcile actual replicas against desired replication. Heartbeat replies can ask a live DataNode to copy or invalidate a block. The NameNode selects the work; it does not copy the bytes.</td>
+</tr>
+</tbody></table>
+<p>Inside <a href="https://github.com/apache/hadoop/blob/4d7825309348956336b8f06a08322b78422849b1/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/namenode/FSNamesystem.java#L3047-L3090"><code>FSNamesystem.getAdditionalBlock</code></a>,
+Hadoop validates the request under a read lock and can return the last block
+if it recognizes a retry. For a new block it chooses DataNode targets outside
+the namespace write lock, then takes that lock to attach the allocation to the
+file. It syncs the edits before returning the block to the writer.</p>
+<h2 id="worked-flow-from-a-scan-to-one-output-part">Worked flow: from a scan to one output part</h2>
+<figure class="source-figure"><a href="../diagrams/components-hdfs-namenode-1.svg" title="Open diagram at full size"><img loading="lazy" src="../diagrams/components-hdfs-namenode-1.svg" alt="Sequence diagram for components hdfs namenode; open to enlarge"></a><figcaption>Sequence diagram · <a href="../diagrams/components-hdfs-namenode-1.svg">Open full size</a></figcaption><details><summary>Text equivalent</summary><pre>sequenceDiagram
+    participant C as Hadoop client in Spark
+    participant N as NameNode
+    participant D as DataNodes
+    C-&gt;&gt;N: getBlockLocations for input file and byte range
+    N--&gt;&gt;C: Block IDs, offsets and replica addresses
+    C-&gt;&gt;D: Read from a chosen replica
+    D--&gt;&gt;C: Parquet bytes and checksums
+    C-&gt;&gt;N: create output part, then addBlock
+    N--&gt;&gt;C: Block ID and write pipeline targets
+    C-&gt;&gt;D: Send packets to the head of the write pipeline
+    D--&gt;&gt;C: Pipeline acknowledgements
+    D--&gt;&gt;N: Report received replicas
+    C-&gt;&gt;N: complete the output part
+    N--&gt;&gt;C: File closed when progress checks pass</pre></details></figure>
+<ol>
+<li>During input discovery a Hadoop client lists <code>/warehouse/orders</code>. For a task reading part of a file, the client obtains or reuses block locations and picks a suitable replica. A file split or Spark partition need not equal one HDFS block.</li>
+<li>An output task opens a part file for <code>/reports/paid-orders-by-region</code>, possibly under a committer&#39;s work path. The active NameNode checks path permissions and create flags, records the under-construction inode and lease, and returns file status.</li>
+<li>When the writer needs space, <code>addBlock</code> allocates a block ID and picks targets. The writer exchanges bytes and acknowledgements with DataNodes alone. Their replica reports and the writer&#39;s close request arrive independently.</li>
+<li>The NameNode checks the writer and block progress before closing the inode. Closure need not wait for the <em>desired</em> replication factor on every block. File close, background re-replication, and publication by <a href="file-commit-protocol.html">Spark&#39;s file commit protocol</a> are distinct events.</li>
+</ol>
+<h2 id="where-a-failure-shows-up">Where a failure shows up</h2>
+<ul>
+<li><strong>Listing fails before a task reads:</strong> check the effective nameservice, submitting identity, path permissions, and NameNode RPC/HA health. Idle YARN slots cannot fix an <code>AccessControlException</code> or a call directed to a standby.</li>
+<li><strong>Listings work, but creates fail with <code>SafeModeException</code>:</strong> check <code>hdfs dfsadmin -safemode get</code> and live DataNode reports. At startup, the NameNode can serve metadata reads while withholding writes as it learns how many blocks have checked in.</li>
+<li><strong>Listing succeeds, but a range cannot be read:</strong> run <code>hdfs fsck &lt;file&gt; -files -blocks -locations</code>. No usable replicas and a reported replica whose data-transfer address the executor cannot reach are different failures. A healthy NameNode UI proves neither replica integrity nor network access.</li>
+</ul>
+<h2 id="sources">Sources</h2>
+<ul>
+<li>Hadoop 3.4.1: <a href="https://hadoop.apache.org/docs/r3.4.1/hadoop-project-dist/hadoop-hdfs/HdfsDesign.html">HDFS architecture and safe mode</a>, <a href="https://hadoop.apache.org/docs/r3.4.1/hadoop-project-dist/hadoop-hdfs/HDFSHighAvailabilityWithQJM.html">HA with shared edits</a>, and <a href="https://hadoop.apache.org/docs/r3.4.1/hadoop-project-dist/hadoop-hdfs/HDFSCommands.html">HDFS diagnostic commands</a>.</li>
+<li>Hadoop 3.4.1 source: <a href="https://github.com/apache/hadoop/blob/4d7825309348956336b8f06a08322b78422849b1/hadoop-hdfs-project/hadoop-hdfs-client/src/main/java/org/apache/hadoop/hdfs/protocol/ClientProtocol.java">client RPC contracts</a>, <a href="https://github.com/apache/hadoop/blob/4d7825309348956336b8f06a08322b78422849b1/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/namenode/FSDirWriteFileOp.java">write allocation, lease, and close logic</a>, and <a href="https://github.com/apache/hadoop/blob/4d7825309348956336b8f06a08322b78422849b1/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/protocol/DatanodeProtocol.java">DataNode reporting interface</a>.</li>
+</ul>
+</main></html>

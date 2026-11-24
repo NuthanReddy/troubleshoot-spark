@@ -1,0 +1,152 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>TaskSetManager: choosing and retrying a partition attempt · Troubleshoot Spark</title><link rel="stylesheet" href="../style.css"><main class="reader"><nav><a href=".././#map">Diagnostic map</a> · <a href="../guide.html">Lifecycle</a> · <a href="../scenarios.html">Cases</a> · <a href="../components/index.html">Components</a></nav><h1 id="tasksetmanager-choosing-and-retrying-a-partition-attempt">TaskSetManager: choosing and retrying a partition attempt</h1>
+<p><a href="index.html">component index</a> · Driver JVM · Apache Spark <code>dada2a6</code></p>
+<h2 id="overview">Overview</h2>
+<p>A <code>TaskSetManager</code> manages <strong>one submitted stage attempt</strong>, not a whole job.
+Given an offer for a particular host and executor, it decides which of <em>its</em>
+partitions to launch, whether that launch is a retry or speculative copy, and
+when to stop issuing work. The <a href="task-scheduler.html">task scheduler</a> has already
+chosen which manager to ask and checked that the resources fit. The manager
+does not decide stage readiness, debit an executor&#39;s free cores, or allocate a
+YARN container.</p>
+<h2 id="flow-at-a-glance">Flow at a glance</h2>
+<ol>
+<li><strong>Attempt 0</strong>: Hits an exception while running partition 7.</li>
+<li><strong>Task set manager</strong>: Counts one failure and queues partition 7 again because retries remain.</li>
+<li><strong>Attempt 1</strong>: Starts with a new task ID on the next compatible offer.</li>
+</ol>
+<blockquote>
+<p><strong>Key distinction:</strong> The task attempt changes; the partition and stage attempt stay the same.</p>
+</blockquote>
+<details>
+<summary>Show the animated flow</summary>
+
+<p><img src="visuals/task-set-manager.svg" alt="Partition 7 gets a second task attempt with a new task ID after the first attempt fails"></p>
+</details>
+
+<h2 id="requirements-analysis">Requirements analysis</h2>
+<p>Prefer data-local work without waiting forever, bound repeatable failures of a
+single partition, and avoid counting two successful attempts as two completed
+partitions. A failed shuffle read is a different problem: repeatedly launching
+the same reader cannot recreate its missing input. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/TaskSetManager.scala#L41-L89">Class contract</a> ·
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/TaskSetManager.scala#L672-L702">locality clock</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/TaskSetManager.scala#L1001-L1042">failure handling</a>.</p>
+<h2 id="component-architecture-and-lifetime">Component architecture and lifetime</h2>
+<p><code>TaskSchedulerImpl.submitTasks</code> constructs the manager, indexes it by
+<code>(stageId, stageAttemptId)</code> and adds it to a scheduling pool. The manager
+initializes the pending lists and stamps its tasks with the current map-output
+tracker epoch. It has <strong>no scheduler thread or independent <code>stop()</code></strong>. Its
+mutable state is designed to be accessed under <code>TaskSchedulerImpl</code>&#39;s monitor.
+A superseding stage attempt, suspension, abort or completion can mark it
+<code>isZombie</code>: no more launches, but existing attempts can still report.
+<code>maybeFinishTaskSet</code> checks <code>isZombie &amp;&amp; runningTasks == 0</code> before asking the
+scheduler to remove it from the stage index and pool. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/TaskSchedulerImpl.scala#L299-L351">Creation</a> ·
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/TaskSetManager.scala#L131-L245">state and initialization</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/TaskSetManager.scala#L626-L636">drain condition</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/TaskSchedulerImpl.scala#L425-L443">removal</a>.</p>
+<h2 id="data-models">Data models</h2>
+<table>
+<thead>
+<tr>
+<th>Identity or index</th>
+<th>Why it is separate</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>TaskSet.id = stageId.stageAttemptId</code></td>
+<td>The stage and its attempted execution. <code>tasks(index).partitionId</code> is the RDD partition; an array containing <em>only missing partitions</em> can have <code>index = 0</code> for partition <code>7</code>. <code>partitionToIndex</code> translates notifications back.</td>
+</tr>
+<tr>
+<td>TID and <a href="task-attempt.html">task attempt</a> number</td>
+<td><code>sched.newTaskId()</code> is unique per launch in this scheduler; <code>taskAttempts(index).size</code> gives the next zero-based attempt number <strong>within this manager</strong>. <code>TaskInfo</code> holds both, the executor, host, locality, time and speculative flag.</td>
+</tr>
+<tr>
+<td><code>successful(index)</code>, <code>copiesRunning(index)</code>, <code>numFailures(index)</code></td>
+<td>Eligibility, copy and retry accounting are per index. <code>runningTasksSet</code> tracks outstanding TIDs and <code>tasksSuccessful</code> counts indices, not attempts. There is a deliberate fetch-failure exception to the meaning of <code>successful</code>.</td>
+</tr>
+<tr>
+<td>Pending and history indexes</td>
+<td>Regular and speculative work have separate locality lists. <code>taskInfos</code> indexes by TID; <code>executorIdToTaskIds</code> indexes all attempts placed there, including finished ones that may have produced shuffle data.</td>
+</tr>
+</tbody></table>
+<p><a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/TaskSet.scala#L25-L45">TaskSet shape</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/TaskSetManager.scala#L41-L89">partition and failure state</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/TaskSetManager.scala#L131-L245">indexes</a> ·
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/TaskSetManager.scala#L537-L618">attempt creation</a>.</p>
+<h2 id="design-patterns-used">Design patterns used</h2>
+<p><strong>Composite leaf (structural).</strong> Like a <code>Pool</code>, the manager is a <code>Schedulable</code>,
+but its sorted queue contains only itself. Parent pools can order leaves and
+propagate running counts without knowing about partitions. Inside the leaf,
+<code>isZombie</code>, per-index flags and running TIDs implement a guarded lifecycle
+rather than a hierarchy of state classes. Immediately deleting a cancelled
+leaf would lose the history needed to interpret a late attempt.
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/TaskSetManager.scala#L1184-L1216">Leaf operations</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/Pool.scala#L105-L127">pool traversal</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/TaskSetManager.scala#L131-L245">zombie lifetime</a>.</p>
+<h2 id="apiinterface-definitions">API/interface definitions</h2>
+<table>
+<thead>
+<tr>
+<th>Caller and input</th>
+<th>Manager decision/output</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>TaskSchedulerImpl.resourceOfferSingleTaskSet</code> → <code>resourceOffer(execId, host, maxLocality, taskCpus, assignments)</code></td>
+<td>Returns <code>(Option[TaskDescription], delaySchedulingReject, dequeuedIndex)</code>. An ordinary acceptance calls <code>prepareLaunchingTask</code>; a barrier acceptance reserves a candidate until the scheduler can place the entire set. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/TaskSetManager.scala#L466-L535">Offer contract</a></td>
+</tr>
+<tr>
+<td><code>TaskResultGetter</code> through <code>TaskSchedulerImpl</code> → <code>handleSuccessfulTask(tid, directResult)</code> / <code>handleFailedTask(tid, state, reason)</code></td>
+<td>Updates <code>TaskInfo</code> and partition accounting, informs <code>DAGScheduler.taskEnded</code>, and may enqueue a retry, kill a sibling, or abort. A result callback is not an executor RPC into this object. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/TaskSchedulerImpl.scala#L956-L978">Callbacks</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/TaskSetManager.scala#L935-L953">DAG notification</a></td>
+</tr>
+<tr>
+<td>Task scheduler → <code>suspend()</code>; manager or result getter → <code>abort(message, exception)</code></td>
+<td>Both stop new attempts. <code>abort</code> additionally reports <code>dagScheduler.taskSetFailed</code>; <code>suspend</code> deliberately does not refail a stage the DAG scheduler is already cancelling. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/TaskSetManager.scala#L1167-L1182">Abort vs. suspend</a></td>
+</tr>
+</tbody></table>
+<h2 id="implementation-notes-partition-7-gets-a-second-attempt">Implementation notes: partition 7 gets a second attempt</h2>
+<ol>
+<li>Suppose index <code>0</code> represents partition <code>7</code>, with a preference for host A.
+A compatible CPU offer on host B may be refused during the node-local wait.
+<code>resourceOffer</code> combines the caller&#39;s maximum locality with the manager&#39;s
+clock; it tries ordinary work before speculative work, consulting executor,
+host, no-preference, rack, and all-task lists as allowed. It skips a
+locality level that no longer has pending work instead of waiting for it.
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/TaskSetManager.scala#L338-L442">Queue selection</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/TaskSetManager.scala#L466-L535">offer</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/TaskSetManager.scala#L672-L702">clock</a>.</li>
+<li>A permitted offer selects index <code>0</code>. The manager obtains a new TID, records
+attempt <code>0</code>, serializes the task, posts <code>taskStarted</code> and returns a
+description containing partition <code>7</code>, executor ID, CPU/resource assignments
+and serialized task. The <a href="driver-scheduler-backend.html">backend</a> sends it.
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/TaskSetManager.scala#L537-L618">Bookkeeping, serialization and description</a>.</li>
+<li>Suppose the task reports an ordinary <code>ExceptionFailure</code>. The manager marks
+that TID finished, decrements the copy count, notifies the DAG scheduler,
+charges one failure if the reason counts, and requeues the index if the
+limit has not been reached. On another offer it launches attempt <code>1</code> with
+a <strong>different TID, same stage attempt and partition</strong>. At the configured
+<code>spark.task.maxFailures</code> limit it aborts the set; the limit counts failures,
+not extra retries after the initial attempt. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/TaskSetManager.scala#L1001-L1042">Failure debit</a> ·
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/TaskSetManager.scala#L1121-L1170">threshold and requeue</a>.</li>
+</ol>
+<table>
+<thead>
+<tr>
+<th>Race or failure</th>
+<th>Outcome</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Speculation</td>
+<td>In the usual path enough completions establish a median duration. An eligible slow task with one running copy may be marked speculatable; it still needs a compatible offer on a host not already tried for that index. A winner kills running siblings. If a sibling marked for that kill reports success late, it is handled as killed, not as a second winning result. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/TaskSetManager.scala#L1315-L1409">Eligibility</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/TaskSetManager.scala#L338-L442">host guard</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/TaskSetManager.scala#L832-L914">winner/loser</a></td>
+</tr>
+<tr>
+<td><code>FetchFailed</code></td>
+<td>The manager marks the index <code>successful</code> <strong>for local scheduling purposes</strong> and makes the set a zombie. It still reports <code>FetchFailed</code>, not <code>Success</code>, to the <a href="dag-scheduler.html">DAG scheduler</a>, which owns shuffle recovery. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/TaskSetManager.scala#L1001-L1042">Fetch-failure branch</a></td>
+</tr>
+<tr>
+<td>Executor lost, task cancelled, or old stage result</td>
+<td>Ordinary non-application-caused executor loss and <code>TaskKilled</code> do not spend the usual failure budget. A cancelled zombie cannot requeue work. If the DAG scheduler accepts an older stage attempt&#39;s success, <code>markPartitionCompleted(partitionId)</code> can satisfy the matching index in the active manager. A transient pipelined group instead fails fast rather than retrying an individual member. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/TaskEndReason.scala#L224-L275">Loss classification</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/TaskSetManager.scala#L1121-L1170">budget exceptions</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/TaskSetManager.scala#L983-L995">partition notification</a></td>
+</tr>
+</tbody></table>
+<h2 id="scalability-and-performance-considerations">Scalability and performance considerations</h2>
+<p>Locality indexes avoid scanning every partition on every offer. They can contain
+stale entries, so dequeuing checks success/copy state and removes entries
+lazily. The executor-to-TID index limits an executor-loss scan to attempts
+placed there, at the cost of retaining attempt history for the manager&#39;s
+lifetime. <strong>Diagnostic:</strong> in a <code>Task ... failed ... times; aborting job</code> log,
+compare stage <strong>and stage attempt</strong>, task index, TID, executor and the most
+recent exception. Several TIDs for one index are expected; several different
+failed indices do not by themselves exhaust a single index&#39;s budget.
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/TaskSetManager.scala#L338-L442">Lazy pruning</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/TaskSetManager.scala#L1219-L1244">executor-loss scan</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/TaskSetManager.scala#L1121-L1170">abort log</a>.</p>
+</main></html>

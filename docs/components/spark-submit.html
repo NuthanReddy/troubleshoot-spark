@@ -1,0 +1,64 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>`spark-submit`: choosing where the PySpark driver starts · Troubleshoot Spark</title><link rel="stylesheet" href="../style.css"><main class="reader"><nav><a href=".././#map">Diagnostic map</a> · <a href="../guide.html">Lifecycle</a> · <a href="../scenarios.html">Cases</a> · <a href="../components/index.html">Components</a></nav><h1 id="spark-submit-choosing-where-the-pyspark-driver-starts"><code>spark-submit</code>: choosing where the PySpark driver starts</h1>
+<p><a href="index.html">Component index</a> · <a href="yarn-client.html">Next: YARN submission client</a></p>
+<p>For a classic PySpark batch script, <code>spark-submit</code> decides <strong>which JVM entry point runs first and what arguments it gets</strong>. It runs on the submit host. In cluster mode that JVM submits the application; in client mode it also hosts the JVM side of the driver. <code>spark-submit</code> does not choose a worker, launch a YARN container, or assign a task.</p>
+<h2 id="flow-at-a-glance">Flow at a glance</h2>
+<ol>
+<li><strong>Submit wrapper</strong>: Passes the command line to SparkSubmit.</li>
+<li><strong>SparkSubmit</strong>: Selects PythonRunner for a client-mode Python script.</li>
+<li><strong>PythonRunner</strong>: Starts the Python driver on the submit host.</li>
+</ol>
+<blockquote>
+<p><strong>Key distinction:</strong> In cluster mode the submit JVM runs the YARN submission client instead. The AM starts Python later.</p>
+</blockquote>
+<details>
+<summary>Show the animated flow</summary>
+
+<p><img src="visuals/spark-submit.svg" alt="The submit wrapper passes a client-mode command to SparkSubmit, which selects PythonRunner to start the driver locally."></p>
+</details>
+
+<h2 id="from-command-line-to-jvm-call">From command line to JVM call</h2>
+<table>
+<thead>
+<tr>
+<th>Boundary</th>
+<th>Input and output</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Caller to launcher</td>
+<td>The <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/bin/spark-submit#L20-L27"><code>bin/spark-submit</code> wrapper</a> passes the argument vector to <code>spark-class</code> for <code>org.apache.spark.deploy.SparkSubmit</code>. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/deploy/SparkSubmit.scala#L70-L104"><code>doSubmit</code></a> parses it and dispatches the <code>SUBMIT</code> action. <code>--master yarn</code> selects a <strong>cluster manager</strong>, not a <a href="resource-manager.html">ResourceManager</a> hostname. <code>--deploy-mode</code> selects the driver&#39;s placement; its default is <code>client</code>.</td>
+</tr>
+<tr>
+<td>Parser to environment preparation</td>
+<td><code>SparkSubmitArguments</code> owns the primary resource URI, <code>isPython</code>, application arguments, and Spark properties for this invocation. The first non-option resource ends Spark option parsing: <code>--executor-memory 4g</code> <strong>after</strong> <code>orders.py</code> is an argument to the script. <code>--conf</code> values take precedence over properties-file entries; explicit options such as <code>--executor-memory</code> are filled from properties or environment only if missing. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/deploy/SparkSubmitArguments.scala#L93-L218">Parsing and defaults</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/deploy/SparkSubmitArguments.scala#L505-L529">argument boundary</a></td>
+</tr>
+<tr>
+<td>Environment preparation to dispatcher</td>
+<td><code>prepareSubmitEnvironment</code> returns <code>(childArgs, childClasspath, sparkConf, childMainClass)</code>. For YARN it maps <code>--num-executors</code> to <code>spark.executor.instances</code>, <code>--py-files</code> to <code>spark.yarn.dist.pyFiles</code>, and marks Python submissions with <code>spark.yarn.isPython=true</code>. These are inputs for later components, <strong>not</strong> requests already sent to YARN. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/deploy/SparkSubmit.scala#L243-L285">Mode selection</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/deploy/SparkSubmit.scala#L690-L707">option mapping</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/deploy/SparkSubmit.scala#L813-L843">Python dispatch</a></td>
+</tr>
+<tr>
+<td>Dispatcher to selected class</td>
+<td><code>runMain</code> installs the classpath and invokes <code>SparkApplication.start</code> or wraps a static <code>main</code> with <code>JavaMainApplication</code>. Thus <strong>child main class</strong> means a call inside the submit JVM, not a second JVM. <code>PythonRunner</code>, when invoked, really does create a Python subprocess. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/deploy/SparkSubmit.scala#L971-L1049">Dispatcher</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/deploy/SparkApplication.scala#L33-L53">static-main adapter</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/deploy/PythonRunner.scala#L42-L132">Python process</a></td>
+</tr>
+</tbody></table>
+<h2 id="trace-one-command-in-both-modes">Trace one command in both modes</h2>
+<p>Suppose <code>orders.py</code> accepts a processing date:</p>
+<pre><code class="language-shell">spark-submit --master yarn --deploy-mode cluster --num-executors 3 --conf spark.dynamicAllocation.enabled=false --py-files rules.zip orders.py 2026-04-30
+</code></pre>
+<ol>
+<li>The submit JVM recognizes the <code>.py</code> primary resource; <code>2026-04-30</code> is application data. It resolves file references. A remote URI whose scheme Hadoop cannot handle, or which <code>spark.yarn.dist.forceDownloadSchemes</code> selects, can be downloaded to the <strong>submit host</strong> first. That is neither upload to shared storage nor localization into a container. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/deploy/SparkSubmit.scala#L498-L540">Download decision</a></li>
+<li><strong>Cluster:</strong> the first class is <code>YarnClusterApplication</code>. Its arguments include <code>--primary-py-file &lt;orders.py URI&gt; --class org.apache.spark.deploy.PythonRunner --arg 2026-04-30</code>. The wrapper constructs the <a href="yarn-client.html">YARN client</a>; no user Python process is needed on the submit host. The selected node later starts the <a href="application-master.html">ApplicationMaster</a>, which invokes <code>PythonRunner</code> with the localized script. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/deploy/SparkSubmit.scala#L813-L843">Cluster argument construction</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/deploy/yarn/Client.scala#L1829-L1841">wrapper handoff</a></li>
+<li><strong>Client, changing only <code>--deploy-mode</code>:</strong> the first class is <code>PythonRunner</code> itself. It receives the local script path, local Python dependencies, then the date; it starts a Py4J gateway and the Python process on the submit host. When the script initializes its classic Spark context, <code>YarnClientSchedulerBackend.start</code> submits the YARN application with <code>--arg &lt;driverHost&gt;:&lt;driverPort&gt;</code>. Here the driver exists <strong>before</strong> the AM. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/deploy/SparkSubmit.scala#L569-L588">Client arguments</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/deploy/PythonRunner.scala#L42-L132">Python gateway and process</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/scheduler/cluster/YarnClientSchedulerBackend.scala#L49-L73">backend submission</a></li>
+</ol>
+<figure class="source-figure"><a href="../diagrams/components-spark-submit-1.svg" title="Open diagram at full size"><img loading="lazy" src="../diagrams/components-spark-submit-1.svg" alt="Flowchart for components spark submit; open to enlarge"></a><figcaption>Flowchart · <a href="../diagrams/components-spark-submit-1.svg">Open full size</a></figcaption><details><summary>Text equivalent</summary><pre>flowchart LR
+    S[&quot;SparkSubmit on submit host&quot;] --&gt;|cluster| Y[&quot;YarnClusterApplication&quot;]
+    Y --&gt; C[&quot;Submit YARN application&quot;]
+    C --&gt; A[&quot;AM on allocated node&quot;]
+    A --&gt; P[&quot;PythonRunner starts orders.py there&quot;]
+    S --&gt;|client| R[&quot;PythonRunner starts orders.py here&quot;]
+    R --&gt; D[&quot;SparkContext starts YARN backend&quot;]
+    D --&gt; E[&quot;Submit YARN application with driver address&quot;]</pre></details></figure>
+<h2 id="interpreting-exit-and-failure">Interpreting exit and failure</h2>
+<p>If the options are invalid, <code>HADOOP_CONF_DIR</code> and <code>YARN_CONF_DIR</code> are both missing, or Spark cannot load its YARN classes, look at the <strong>submit process</strong>, not executor logs. <code>--verbose</code> shows the selected main class, arguments, classpath, and redacted Spark configuration. It can distinguish the wrong deploy mode from a later failure to stage or run the script. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/deploy/SparkSubmitArguments.scala#L278-L321">Validation</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/deploy/SparkSubmit.scala#L243-L285">YARN class check</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/deploy/SparkSubmit.scala#L971-L1049">verbose output</a></p>
+<p>In ordinary cluster submission the client monitors the application. With <code>spark.yarn.submit.waitAppCompletion=false</code> and no connected launcher backend, it checks one report and can exit before the job finishes; a zero shell exit is then <strong>not</strong> proof of successful output. In client mode the submit host must remain alive: <code>PythonRunner</code> waits for Python, propagates its nonzero exit, and shuts down the gateway. YARN cannot restart that external driver. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/deploy/yarn/Client.scala#L1386-L1412">Cluster wait policy</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/deploy/PythonRunner.scala#L42-L132">Python exit handling</a></p>
+</main></html>

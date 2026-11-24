@@ -1,0 +1,4110 @@
+{
+  "rev": "4f046b70c9bf83f4e51b7381512c6a6c8480110e",
+  "coverage": [
+    {
+      "section": "details",
+      "slug": "SchemaColumnConvertNotSupportedException",
+      "type": "article",
+      "blob": "8cd283608661aa96a2258db39f2ac90350e86218",
+      "targets": [
+        "case-36"
+      ]
+    },
+    {
+      "section": "details",
+      "slug": "best-pratice-collect",
+      "type": "article",
+      "blob": "ba73d6be8a881ccf4a5c64c557bcd7779a995409",
+      "targets": [
+        "case-17",
+        "case-26",
+        "driver-heap"
+      ]
+    },
+    {
+      "section": "details",
+      "slug": "big-broadcast-join",
+      "type": "article",
+      "blob": "01038a09da923e4bf02586d10a746a941579d9fc",
+      "targets": [
+        "case-09",
+        "driver-heap",
+        "broadcast-size",
+        "broadcast-despite-disable"
+      ]
+    },
+    {
+      "section": "details",
+      "slug": "broadcast-with-disable",
+      "type": "article",
+      "blob": "7791dc1ab2cda54d4a3b69bddeb6e090c1ec2f13",
+      "targets": [
+        "broadcast-size",
+        "broadcast-despite-disable"
+      ]
+    },
+    {
+      "section": "details",
+      "slug": "class-or-method-not-found",
+      "type": "article",
+      "blob": "343e9e9e6e1368278f14bd35c348449194befe6d",
+      "targets": [
+        "jvm-linkage"
+      ]
+    },
+    {
+      "section": "details",
+      "slug": "container-oom",
+      "type": "article",
+      "blob": "36b7b7ac4c9002099defbf6f9e8e385a56431c2b",
+      "targets": [
+        "case-16",
+        "memory-owner",
+        "python-memory"
+      ]
+    },
+    {
+      "section": "details",
+      "slug": "correlated-column-not-allowed",
+      "type": "article",
+      "blob": "aff9c1ba722ec885dc82ef694ce61382ca28ae24",
+      "targets": [
+        "sql-correlation"
+      ]
+    },
+    {
+      "section": "details",
+      "slug": "driver-max-result-size",
+      "type": "overlapping",
+      "blob": "06794907dcc8855ae9b281dce8b2af655c2fbbb9",
+      "targets": [
+        "case-17",
+        "kryo-limit",
+        "range-sample"
+      ]
+    },
+    {
+      "section": "details",
+      "slug": "error-driver-max-result-size",
+      "type": "article",
+      "blob": "3120d0583f99a8ff71c56c089f139397d93bf3ba",
+      "targets": [
+        "case-17",
+        "broadcast-size",
+        "range-sample"
+      ]
+    },
+    {
+      "section": "details",
+      "slug": "error-driver-out-of-memory",
+      "type": "article",
+      "blob": "a773d97cc984db9f532aad8412b3966fbfdca13a",
+      "targets": [
+        "driver-heap"
+      ]
+    },
+    {
+      "section": "details",
+      "slug": "error-driver-stack-overflow",
+      "type": "article",
+      "blob": "7f1c8bdc00693c97d1202ffed79a5d15a6decce7",
+      "targets": [
+        "driver-stack",
+        "lineage"
+      ]
+    },
+    {
+      "section": "details",
+      "slug": "error-executor-out-of-disk",
+      "type": "article",
+      "blob": "9b5c7f44141235c0f86e4a77e15d46c9f3f0a972",
+      "targets": [
+        "disk-full",
+        "lineage"
+      ]
+    },
+    {
+      "section": "details",
+      "slug": "error-executor-out-of-memory",
+      "type": "article",
+      "blob": "8572cfe4a7719585c821bff0f7c16d011c34934b",
+      "targets": [
+        "case-16",
+        "memory-owner",
+        "executor-heap"
+      ]
+    },
+    {
+      "section": "details",
+      "slug": "error-invalid-file",
+      "type": "article",
+      "blob": "0f4bf4383fac6fca53c349dc266aa6655154057b",
+      "targets": [
+        "case-37",
+        "wrong-format",
+        "damaged-input"
+      ]
+    },
+    {
+      "section": "details",
+      "slug": "error-job",
+      "type": "routing",
+      "blob": "e7e12765f8aca4d26cb99d8a10395c767dc18281",
+      "targets": [
+        "sql-analysis",
+        "handoff"
+      ]
+    },
+    {
+      "section": "details",
+      "slug": "error-memory",
+      "type": "routing",
+      "blob": "279848e2ce00e557b00fbfe411a1b9355bad78b4",
+      "targets": [
+        "memory-owner"
+      ]
+    },
+    {
+      "section": "details",
+      "slug": "error-other",
+      "type": "routing",
+      "blob": "6278197e72a1cd2291fb2db61e6cb89d5d35c792",
+      "targets": [
+        "wrong-format",
+        "handoff"
+      ]
+    },
+    {
+      "section": "details",
+      "slug": "error-shuffle",
+      "type": "article",
+      "blob": "510fdd3f79b0e0bd7f7ddb6daab0c2491407370d",
+      "targets": [
+        "case-11",
+        "executor-heap",
+        "shuffle-meta",
+        "shuffle-network",
+        "shuffle-checksum",
+        "shuffle-registration",
+        "shuffle-frame",
+        "node-loss"
+      ]
+    },
+    {
+      "section": "details",
+      "slug": "error-sql-analysis",
+      "type": "article",
+      "blob": "dbbc8244c704766484114ca6a9b347c99d3828bb",
+      "targets": [
+        "sql-analysis",
+        "sql-correlation"
+      ]
+    },
+    {
+      "section": "details",
+      "slug": "even_partitioning_still_slow",
+      "type": "article",
+      "blob": "7caec2f57322c6556f2f7e48eb88b7ae70728ff5",
+      "targets": [
+        "shuffle-width",
+        "slow-host"
+      ]
+    },
+    {
+      "section": "details",
+      "slug": "failed-to-read-non-parquet-file",
+      "type": "article",
+      "blob": "0e501ad5768fe3dc811234bd3e59caecbc4a0006",
+      "targets": [
+        "wrong-format",
+        "damaged-input"
+      ]
+    },
+    {
+      "section": "details",
+      "slug": "failure-executor-large-record",
+      "type": "article",
+      "blob": "0a3af8de232cfd7d23ffc10f11611f8e864b2fbf",
+      "targets": [
+        "python-memory",
+        "large-row",
+        "kryo-limit",
+        "shuffle-frame"
+      ]
+    },
+    {
+      "section": "details",
+      "slug": "forced-computations",
+      "type": "article",
+      "blob": "1a018412786c4f0ed44ece4679f8ac6541effe57",
+      "targets": [
+        "benchmark"
+      ]
+    },
+    {
+      "section": "details",
+      "slug": "key-skew",
+      "type": "article",
+      "blob": "447509f8cbd337881113f3a5eb7a141bafc930d6",
+      "targets": [
+        "case-10",
+        "key-skew",
+        "skewed-write"
+      ]
+    },
+    {
+      "section": "details",
+      "slug": "max_serialized_task_size",
+      "type": "article",
+      "blob": "fd8ac5b88b868f2432d733297dabcd188cbc0252",
+      "targets": [
+        "task-size"
+      ]
+    },
+    {
+      "section": "details",
+      "slug": "notenoughexecs",
+      "type": "heading only",
+      "blob": "83b091db4bead6bf5751254eaf81f1e408e9e3aa",
+      "targets": [
+        "case-05",
+        "capacity-wait"
+      ]
+    },
+    {
+      "section": "details",
+      "slug": "partial_aggregates",
+      "type": "article",
+      "blob": "02ab4aafe768d9ef436cbf6ae75108fe81641540",
+      "targets": [
+        "case-29"
+      ]
+    },
+    {
+      "section": "details",
+      "slug": "pyudfoom",
+      "type": "article",
+      "blob": "ee9cfec2cc8bd472ec17432c13af4d39ad86fc45",
+      "targets": [
+        "python-memory",
+        "large-row"
+      ]
+    },
+    {
+      "section": "details",
+      "slug": "read-partition-issue",
+      "type": "article",
+      "blob": "fb602a2eb2d7eb4a59eff87e48194c39992702ee",
+      "targets": [
+        "scan-layout",
+        "small-files"
+      ]
+    },
+    {
+      "section": "details",
+      "slug": "revise-bad_partitioning",
+      "type": "overlapping",
+      "blob": "3b6f189bd0a7582ccab6cbd863fabf1f79a42660",
+      "targets": [
+        "key-skew",
+        "shuffle-width",
+        "scan-layout"
+      ]
+    },
+    {
+      "section": "details",
+      "slug": "revise-even_partitioning_still_slow",
+      "type": "overlapping",
+      "blob": "a43a4af58eda35278bbb4c964408057f0eb20aa9",
+      "targets": [
+        "shuffle-width",
+        "slow-host"
+      ]
+    },
+    {
+      "section": "details",
+      "slug": "shuffle_exchange_loses_exec_reg",
+      "type": "article",
+      "blob": "37f28776ca9b26f9e48b918b75d6169f9dba272b",
+      "targets": [
+        "shuffle-meta",
+        "shuffle-registration"
+      ]
+    },
+    {
+      "section": "details",
+      "slug": "shuffle_fetch_corrupted",
+      "type": "article",
+      "blob": "0f381d3924f6803bdd8fe0d84befe64f18adf402",
+      "targets": [
+        "shuffle-checksum"
+      ]
+    },
+    {
+      "section": "details",
+      "slug": "singlepartition",
+      "type": "article",
+      "blob": "56bd822e327a5c4614d6f145f084594872b2e942",
+      "targets": [
+        "case-28"
+      ]
+    },
+    {
+      "section": "details",
+      "slug": "slow-executor",
+      "type": "article",
+      "blob": "7945897a8a1f0feceee0d76b599f5939d5561504",
+      "targets": [
+        "node-loss",
+        "slow-host"
+      ]
+    },
+    {
+      "section": "details",
+      "slug": "slow-job-slow-cluster",
+      "type": "article",
+      "blob": "474a35cfaf3dadfbeceee4ee86e373cfdb5d3e73",
+      "targets": [
+        "case-05",
+        "capacity-wait",
+        "stage-regression"
+      ]
+    },
+    {
+      "section": "details",
+      "slug": "slow-job",
+      "type": "routing",
+      "blob": "7af7380f3bf7370386735f052b825dce015ea73c",
+      "targets": [
+        "capacity-wait",
+        "stage-regression",
+        "handoff"
+      ]
+    },
+    {
+      "section": "details",
+      "slug": "slow-map",
+      "type": "article",
+      "blob": "8f42258b71c947424c54197bade2bdb069f88ae1",
+      "targets": [
+        "case-08",
+        "case-35",
+        "scan-layout",
+        "scan-volume",
+        "regex-cpu",
+        "stage-regression"
+      ]
+    },
+    {
+      "section": "details",
+      "slug": "slow-partition_filter_pushdown",
+      "type": "article",
+      "blob": "d46e0f92d0a393c8942b6799af1d9b7989da3624",
+      "targets": [
+        "case-35",
+        "scan-volume"
+      ]
+    },
+    {
+      "section": "details",
+      "slug": "slow-reduce",
+      "type": "article",
+      "blob": "747b72ceaf0aee3466f4a12a7fbb3b5c92cdea9a",
+      "targets": [
+        "case-29",
+        "case-32",
+        "case-34",
+        "key-skew",
+        "shuffle-width",
+        "stage-regression"
+      ]
+    },
+    {
+      "section": "details",
+      "slug": "slow-regex-tips",
+      "type": "article",
+      "blob": "275898749fa50d34ea17def8a74bd750a55b663a",
+      "targets": [
+        "regex-cpu"
+      ]
+    },
+    {
+      "section": "details",
+      "slug": "slow-skewed-join",
+      "type": "article",
+      "blob": "ecac8efb3397648698a2645a8792019a5aa2b999",
+      "targets": [
+        "case-10",
+        "key-skew"
+      ]
+    },
+    {
+      "section": "details",
+      "slug": "slow-skewed-write",
+      "type": "article",
+      "blob": "8b3644e693352c4febb20cce2b2ff4271f2c6af2",
+      "targets": [
+        "skewed-write"
+      ]
+    },
+    {
+      "section": "details",
+      "slug": "slow-stage",
+      "type": "article",
+      "blob": "0abc8447fe42294ae19bb628a0a6f92d62e7c45f",
+      "targets": [
+        "benchmark",
+        "stage-regression"
+      ]
+    },
+    {
+      "section": "details",
+      "slug": "slow-writes-s3",
+      "type": "article",
+      "blob": "2d43c788c5e66bc2aef584be0aef241a4a51a563",
+      "targets": [
+        "object-commit"
+      ]
+    },
+    {
+      "section": "details",
+      "slug": "slow-writes-too-many-files",
+      "type": "article",
+      "blob": "2ff3487313a508705696c8d19a1b72269cc3d59d",
+      "targets": [
+        "case-40",
+        "small-files"
+      ]
+    },
+    {
+      "section": "details",
+      "slug": "slow-writes",
+      "type": "routing",
+      "blob": "c5bace6c264f49c45d914ec59f0bbbcd98c01560",
+      "targets": [
+        "small-files",
+        "skewed-write",
+        "object-commit",
+        "write-stage"
+      ]
+    },
+    {
+      "section": "details",
+      "slug": "toobigdag",
+      "type": "article",
+      "blob": "6b5c743e055f3da19a13b9498d642fc6241b46d1",
+      "targets": [
+        "case-31",
+        "driver-stack",
+        "disk-full",
+        "lineage"
+      ]
+    },
+    {
+      "section": "details",
+      "slug": "toofew_tasks",
+      "type": "heading only",
+      "blob": "e33a513ad672722b2523a75740394eca9476a56f",
+      "targets": [
+        "case-30",
+        "shuffle-width"
+      ]
+    },
+    {
+      "section": "details",
+      "slug": "toolargejar",
+      "type": "article",
+      "blob": "15bd3b1914cbb42e58e7fa3f892bc16376686a94",
+      "targets": [
+        "case-21",
+        "large-jar"
+      ]
+    },
+    {
+      "section": "details",
+      "slug": "toomany_tasks",
+      "type": "heading only",
+      "blob": "2d608f2b56b234b9c3ce038950cc83a662b21a6d",
+      "targets": [
+        "case-34",
+        "shuffle-width"
+      ]
+    },
+    {
+      "section": "details",
+      "slug": "udfslow",
+      "type": "article",
+      "blob": "621f4c12bf5aefcd407a58bded621875f4c025b8",
+      "targets": [
+        "case-08"
+      ]
+    },
+    {
+      "section": "details",
+      "slug": "write-fails",
+      "type": "article",
+      "blob": "4f62650aa36168f9a41e0f3333fa6c8827ae9652",
+      "targets": [
+        "case-18",
+        "skewed-write",
+        "object-commit",
+        "write-stage"
+      ]
+    },
+    {
+      "section": "flowchart",
+      "slug": "error",
+      "type": "flowchart",
+      "blob": "bf1de72c39013960e16bfe8a7b6638cecf7a2761",
+      "nodes": [
+        {
+          "node": "ContainerOOM",
+          "targets": [
+            "case-16"
+          ]
+        },
+        {
+          "node": "DriverMaxResultSize",
+          "targets": [
+            "case-17"
+          ]
+        },
+        {
+          "node": "DriverMemory",
+          "targets": [
+            "driver-heap"
+          ]
+        },
+        {
+          "node": "DriverMemoryError",
+          "targets": [
+            "driver-heap"
+          ]
+        },
+        {
+          "node": "Error",
+          "targets": [
+            "handoff"
+          ]
+        },
+        {
+          "node": "ExecutorDiskError",
+          "targets": [
+            "disk-full"
+          ]
+        },
+        {
+          "node": "ExecutorMemory",
+          "targets": [
+            "executor-heap"
+          ]
+        },
+        {
+          "node": "ExecutorMemoryError",
+          "targets": [
+            "executor-heap"
+          ]
+        },
+        {
+          "node": "KyroBuffer",
+          "targets": [
+            "kryo-limit"
+          ]
+        },
+        {
+          "node": "LARGERECORDS",
+          "targets": [
+            "large-row"
+          ]
+        },
+        {
+          "node": "LostShuffleFiles",
+          "targets": [
+            "shuffle-meta"
+          ]
+        },
+        {
+          "node": "MaxSerializeTask",
+          "targets": [
+            "task-size"
+          ]
+        },
+        {
+          "node": "MemoryError",
+          "targets": [
+            "memory-owner"
+          ]
+        },
+        {
+          "node": "NodeFailures",
+          "targets": [
+            "node-loss"
+          ]
+        },
+        {
+          "node": "OtherError",
+          "targets": [
+            "handoff"
+          ]
+        },
+        {
+          "node": "SchemaColumnConvertNotSupportedException",
+          "targets": [
+            "case-36"
+          ]
+        },
+        {
+          "node": "Serialization",
+          "targets": [
+            "task-size",
+            "kryo-limit"
+          ]
+        },
+        {
+          "node": "ShuffleError",
+          "targets": [
+            "case-11"
+          ]
+        },
+        {
+          "node": "ShuffleExchangeLosesExecReg",
+          "targets": [
+            "shuffle-registration"
+          ]
+        },
+        {
+          "node": "ShuffleFetchCorrupted",
+          "targets": [
+            "shuffle-checksum"
+          ]
+        },
+        {
+          "node": "SqlAnalysisError",
+          "targets": [
+            "sql-analysis"
+          ]
+        },
+        {
+          "node": "TooBigBroadcastJoin",
+          "targets": [
+            "broadcast-size"
+          ]
+        },
+        {
+          "node": "TooLargeJar",
+          "targets": [
+            "large-jar"
+          ]
+        },
+        {
+          "node": "WriteFails",
+          "targets": [
+            "write-stage"
+          ]
+        }
+      ],
+      "targets": [
+        "case-16",
+        "case-17",
+        "driver-heap",
+        "handoff",
+        "disk-full",
+        "executor-heap",
+        "kryo-limit",
+        "large-row",
+        "shuffle-meta",
+        "task-size",
+        "memory-owner",
+        "node-loss",
+        "case-36",
+        "case-11",
+        "shuffle-registration",
+        "shuffle-checksum",
+        "sql-analysis",
+        "broadcast-size",
+        "large-jar",
+        "write-stage"
+      ]
+    },
+    {
+      "section": "flowchart",
+      "slug": "index",
+      "type": "flowchart",
+      "blob": "6afc188e048b31ec7741eff1f9aea59cef816f16",
+      "nodes": [
+        {
+          "node": "A",
+          "targets": [
+            "handoff"
+          ]
+        },
+        {
+          "node": "B",
+          "targets": [
+            "stage-regression"
+          ]
+        },
+        {
+          "node": "C",
+          "targets": [
+            "handoff"
+          ]
+        }
+      ],
+      "targets": [
+        "handoff",
+        "stage-regression"
+      ]
+    },
+    {
+      "section": "flowchart",
+      "slug": "shared",
+      "type": "flowchart",
+      "blob": "feeabbd6564bc01b7f2da2a9c8e44a5303c710a1",
+      "nodes": [
+        {
+          "node": "OHNOES",
+          "targets": [
+            "handoff"
+          ]
+        }
+      ],
+      "targets": [
+        "handoff"
+      ]
+    },
+    {
+      "section": "flowchart",
+      "slug": "slow",
+      "type": "flowchart",
+      "blob": "1352b256897ba80edcd4c181cdfb07bcd5247184",
+      "nodes": [
+        {
+          "node": "FILTERNOTPUSHED",
+          "targets": [
+            "case-35"
+          ]
+        },
+        {
+          "node": "NOTENOUGHEXEC",
+          "targets": [
+            "capacity-wait"
+          ]
+        },
+        {
+          "node": "PAGGS",
+          "targets": [
+            "case-29"
+          ]
+        },
+        {
+          "node": "READPARTITIONISSUES",
+          "targets": [
+            "scan-layout"
+          ]
+        },
+        {
+          "node": "S3COMMITTER",
+          "targets": [
+            "object-commit"
+          ]
+        },
+        {
+          "node": "SHUFFLEPARTITIONISSUES",
+          "targets": [
+            "shuffle-width"
+          ]
+        },
+        {
+          "node": "SLOWSTAGE",
+          "targets": [
+            "stage-regression"
+          ]
+        },
+        {
+          "node": "SLOWWRITESTOSTORAGE",
+          "targets": [
+            "skewed-write",
+            "object-commit",
+            "small-files"
+          ]
+        },
+        {
+          "node": "SkewedAggregation",
+          "targets": [
+            "key-skew"
+          ]
+        },
+        {
+          "node": "SkewedJoin",
+          "targets": [
+            "case-10"
+          ]
+        },
+        {
+          "node": "SkewedShuffleTasks",
+          "targets": [
+            "key-skew"
+          ]
+        },
+        {
+          "node": "SkewedWrite",
+          "targets": [
+            "skewed-write"
+          ]
+        },
+        {
+          "node": "SlowCluster",
+          "targets": [
+            "capacity-wait"
+          ]
+        },
+        {
+          "node": "SlowJob",
+          "targets": [
+            "stage-regression"
+          ]
+        },
+        {
+          "node": "SlowMap",
+          "targets": [
+            "scan-volume"
+          ]
+        },
+        {
+          "node": "SlowReduce",
+          "targets": [
+            "shuffle-width"
+          ]
+        },
+        {
+          "node": "SlowStage",
+          "targets": [
+            "stage-regression"
+          ]
+        },
+        {
+          "node": "SpillToDisk",
+          "targets": [
+            "case-32"
+          ]
+        },
+        {
+          "node": "TOOBIGDAG",
+          "targets": [
+            "lineage"
+          ]
+        },
+        {
+          "node": "TOOFEW",
+          "targets": [
+            "case-30"
+          ]
+        },
+        {
+          "node": "TOOMANY",
+          "targets": [
+            "shuffle-width"
+          ]
+        },
+        {
+          "node": "TOOMANYFILES",
+          "targets": [
+            "small-files"
+          ]
+        },
+        {
+          "node": "TooFewShuffleTasks",
+          "targets": [
+            "shuffle-width"
+          ]
+        },
+        {
+          "node": "TooLargeJar",
+          "targets": [
+            "large-jar"
+          ]
+        },
+        {
+          "node": "TooManyShuffleTasks",
+          "targets": [
+            "shuffle-width"
+          ]
+        },
+        {
+          "node": "UDFSLOWNESS",
+          "targets": [
+            "case-08"
+          ]
+        }
+      ],
+      "targets": [
+        "case-35",
+        "capacity-wait",
+        "case-29",
+        "scan-layout",
+        "object-commit",
+        "shuffle-width",
+        "stage-regression",
+        "skewed-write",
+        "small-files",
+        "key-skew",
+        "case-10",
+        "scan-volume",
+        "case-32",
+        "lineage",
+        "case-30",
+        "large-jar",
+        "case-08"
+      ]
+    }
+  ],
+  "records": [
+    {
+      "id": "case-01",
+      "kind": "error",
+      "branch": "launch/capacity",
+      "title": "The container request is too large",
+      "aliases": [
+        "above the max threshold",
+        "Required executor memory"
+      ],
+      "upstream": [],
+      "primary": [
+        "https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/deploy/yarn/Client.scala#L194-L235",
+        "https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/deploy/yarn/Client.scala#L404-L431"
+      ],
+      "related": [
+        "capacity-wait",
+        "case-16"
+      ],
+      "cases": [
+        "01"
+      ],
+      "scope": "--executor-memory 8g is set on a cluster with an 8 GiB maximum per container. Eight GiB of JVM heap plus any positive overhead already exceeds the limit, even on an otherwise empty cluster.",
+      "reproduce": "Find the maximum per-container memory of a private test queue. Request exactly that much executor heap , with positive overhead. Check whether the client gets an application ID but never sends the AM launch request.",
+      "checks": [
+        {
+          "question": "Does the complete executor or AM request exceed the RM capability?",
+          "inspect": "An application ID is not proof an application was submitted. Look for above the max threshold in the submit process, not an executor log. Waiting for queue capacity cannot fix this error; that is a different condition.",
+          "action": "Lower the sum of heap, overhead, and other counted memory to fit the maximum. The next submission should pass validation; it can still wait for currently available queue capacity.",
+          "verify": "The launch specification reaches YARN without exceeding per-container capability."
+        }
+      ]
+    },
+    {
+      "id": "case-02",
+      "kind": "error",
+      "branch": "launch/registration",
+      "title": "The driver never initializes SparkContext",
+      "aliases": [
+        "spark.yarn.am.waitTime",
+        "Timed out waiting for SparkContext"
+      ],
+      "upstream": [],
+      "primary": [
+        "https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/deploy/yarn/ApplicationMaster.scala#L496-L539"
+      ],
+      "related": [
+        "case-03",
+        "jvm-linkage"
+      ],
+      "cases": [
+        "02"
+      ],
+      "scope": "In cluster mode , orders.py blocks on an external dependency before SparkSession.builder.getOrCreate() .",
+      "reproduce": "In a test script, sleep 20 seconds before getOrCreate() and submit with spark.yarn.am.waitTime=5s . Compare the timeout in the AM log with the absence of executor requests.",
+      "checks": [
+        {
+          "question": "Does the AM log show a context wait while the Python script has not initialized it?",
+          "inspect": "Zero executors is expected here: none have been requested. Inspect the AM/driver log for Waiting for spark context initialization and the earlier Python output. Increasing executor count does not make blocked driver code finish.",
+          "action": "Move slow initialization after context creation when possible; otherwise allow for measured startup time. Verify AM registration, not merely an early Python print.",
+          "verify": "A context is initialized and the AM registers before timeout."
+        }
+      ]
+    },
+    {
+      "id": "case-03",
+      "kind": "error",
+      "branch": "launch/registration",
+      "title": "YARN grants containers but Spark has no executors",
+      "aliases": [
+        "register executor failed",
+        "Failed to connect to driver"
+      ],
+      "upstream": [],
+      "primary": [
+        "https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/deploy/yarn/ExecutorRunnable.scala#L196-L211",
+        "https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/executor/CoarseGrainedExecutorBackend.scala#L439-L465",
+        "https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/executor/CoarseGrainedExecutorBackend.scala#L102-L114"
+      ],
+      "related": [
+        "case-02",
+        "shuffle-network"
+      ],
+      "cases": [
+        "03"
+      ],
+      "scope": "A client-mode driver advertises localhost or another address that the worker nodes cannot reach.",
+      "reproduce": "On a multi-host test cluster, use client mode with spark.driver.host=localhost . Compare the driver URL in the executor launch log, the failed bootstrap, and the driver's executor count.",
+      "checks": [
+        {
+          "question": "Does the executor fail bootstrap at the advertised driver RPC address?",
+          "inspect": "Compare the YARN container list with the Spark UI Executors tab. Inspect the driver URL in executor logs from the worker's point of view. An open driver web UI is not proof the driver RPC endpoint is reachable.",
+          "action": "Advertise a worker-reachable submit-host address; configure the local bind address separately if necessary. Verify that registration and LaunchedExecutor succeed.",
+          "verify": "The worker registers and becomes ready for tasks, not just a running container."
+        }
+      ]
+    },
+    {
+      "id": "case-04",
+      "kind": "error",
+      "branch": "launch/registration",
+      "title": "The client-mode driver disappears",
+      "aliases": [
+        "Driver terminated or disconnected",
+        "clientModeTreatDisconnectAsFailed"
+      ],
+      "upstream": [],
+      "primary": [
+        "https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/deploy/yarn/ApplicationMaster.scala#L878-L897",
+        "https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/docs/running-on-yarn.md#L477-L486"
+      ],
+      "related": [
+        "case-20",
+        "case-14"
+      ],
+      "cases": [
+        "04"
+      ],
+      "scope": "The submit-host driver dies, or the AM loses its RPC connection to it without a prior orderly shutdown message.",
+      "reproduce": "In a disposable client-mode application, terminate only its own external driver without an orderly shutdown. Compare the AM diagnostics with and without spark.yarn.am.clientModeTreatDisconnectAsFailed=true .",
+      "checks": [
+        {
+          "question": "Did the external client-mode driver disappear without an orderly stop?",
+          "inspect": "A successful YARN final status alone does not prove the last write committed. Correlate the AM disconnect message with the submit-host logs and the sink's commit evidence. This behavior is not the cluster-mode restart in case 20.",
+          "action": "Enable disconnect-as-failure when loss must signal failure. Choose cluster mode if YARN must own driver attempts. Verify that the final report and the actual sink commit agree.",
+          "verify": "The final YARN status agrees with actual output publication."
+        }
+      ]
+    },
+    {
+      "id": "case-05",
+      "kind": "symptom",
+      "branch": "launch/capacity",
+      "title": "A task backlog requests more executors",
+      "aliases": [
+        "executors not scaling",
+        "tasks are backlogged"
+      ],
+      "upstream": [
+        "notenoughexecs",
+        "slow-job-slow-cluster"
+      ],
+      "primary": [
+        "https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/ExecutorAllocationManager.scala#L417-L450",
+        "https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/ExecutorAllocationManager.scala#L501-L602"
+      ],
+      "related": [
+        "capacity-wait",
+        "case-30"
+      ],
+      "cases": [
+        "05"
+      ],
+      "scope": "Dynamic allocation is enabled. A stage exposes hundreds of runnable partitions, but its few existing executors have no free slots.",
+      "reproduce": "Use a test queue with spare capacity, dynamic allocation and shuffle tracking, one initial one-core executor, and a maximum of three. Run 12 partitions that each sleep two seconds; set the backlog timeout to one second. Compare requested and live counts over time.",
+      "checks": [
+        {
+          "question": "Is the executor target rising while registered slots lag behind?",
+          "inspect": "The driver's target may rise while the live executor count stays flat because the queue has no capacity. Compare the driver's because tasks are backlogged log with YARN grants and actual executor additions.",
+          "action": "If grants lag requests, inspect queue capacity; if requests never increase, check the target bounds and count runnable partitions. Verify newly registered slots drain pending tasks.",
+          "verify": "Pending tasks drain after additional usable slots register."
+        }
+      ]
+    },
+    {
+      "id": "case-06",
+      "kind": "symptom",
+      "branch": "launch/capacity",
+      "title": "An idle executor is or is not removed",
+      "aliases": [
+        "idle executor not removed",
+        "cachedExecutorIdleTimeout"
+      ],
+      "upstream": [],
+      "primary": [
+        "https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/dynalloc/ExecutorMonitor.scala#L109-L139",
+        "https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/ExecutorAllocationManager.scala#L675-L755"
+      ],
+      "related": [
+        "case-07",
+        "capacity-wait"
+      ],
+      "cases": [
+        "06"
+      ],
+      "scope": "A wide stage finishes. One executor has no tasks left but may still hold cached partitions or shuffle data needed by another job.",
+      "reproduce": "Set spark.dynamicAllocation.minExecutors=0 , a 5 s executor idle timeout, and a long cached-executor idle timeout. Materialize a small persisted RDD without a shuffle, wait past 5 s, then unpersist it with blocking=True and wait again.",
+      "checks": [
+        {
+          "question": "Is the idle executor protected by cached blocks, a tracked shuffle, or a configured lower bound?",
+          "inspect": "“No active tasks” and “safe to remove” are different. Check the executor timeline, Storage tab, and dynamic-allocation settings before interpreting an idle JVM as leaked capacity. Loss of an unreplicated cached partition can lead to case 07.",
+          "action": "Release caches when finished, or deliberately retain them. Compare cached blocks and removal reasons before and after; an active tracked shuffle or a minimum executor count can still keep the JVM alive.",
+          "verify": "Only unprotected surplus idle executors are removed."
+        }
+      ]
+    },
+    {
+      "id": "case-07",
+      "kind": "symptom",
+      "branch": "performance/retention",
+      "title": "A persisted partition is missing on the second action",
+      "aliases": [
+        "missing cached partition",
+        "RDD recomputed"
+      ],
+      "upstream": [],
+      "primary": [
+        "https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/rdd/RDD.scala#L430-L465",
+        "https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/storage/BlockManager.scala#L1585-L1666"
+      ],
+      "related": [
+        "case-31",
+        "disk-full"
+      ],
+      "cases": [
+        "07"
+      ],
+      "scope": "A Python program persists an RDD and calls count() twice. Between the actions, the only usable cached copy of partition 12 is evicted.",
+      "reproduce": "Persist and count a small RDD. As an all-block miss control, call unpersist(blocking=True) , persist it again, and count. Compare with a third count while the cache is warm. This control does not simulate eviction of just one partition.",
+      "checks": [
+        {
+          "question": "Was an expected persisted block unavailable when the second action ran?",
+          "inspect": "persist() is not a guarantee against recomputation or a durable checkpoint. Compare cached partition counts in the Storage tab across the two actions; losing one partition does not imply rebuilding the entire RDD.",
+          "action": "Use a storage level appropriate to the reuse pattern, such as memory and disk, and materialize it. Verify cached partition coverage before the next action rather than assuming persist() pinned every block.",
+          "verify": "Cached partition coverage and the recomputed result match expectations."
+        }
+      ]
+    },
+    {
+      "id": "case-08",
+      "kind": "symptom",
+      "branch": "performance/sql",
+      "title": "A filter crosses into Python",
+      "aliases": [
+        "BatchEvalPython",
+        "slow Python UDF"
+      ],
+      "upstream": [
+        "udfslow",
+        "slow-map"
+      ],
+      "primary": [
+        "https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/python/EvalPythonExec.scala#L84-L90",
+        "https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/python/BatchEvalPythonExec.scala#L40-L150"
+      ],
+      "related": [
+        "python-memory",
+        "regex-cpu"
+      ],
+      "cases": [
+        "08"
+      ],
+      "scope": "Compare df.filter(F.col(\"age\") > 18) with a filter that calls an equivalent regular, non-Arrow scalar Python UDF .",
+      "reproduce": "Run the same nullable fixture through age > 18 and a Boolean scalar Python UDF with equivalent null handling and useArrow=False . Inspect the formatted plans and collect the small outputs.",
+      "checks": [
+        {
+          "question": "Is a Python evaluation operator present for a predicate expressible in native SQL?",
+          "inspect": "Similar-looking Python source can create very different runtime work: the UDF adds a process boundary, conversion, and serialization. Compare df.explain(\"formatted\") for BatchEvalPython ; Arrow and pandas UDFs use other paths.",
+          "action": "Use a built-in expression where semantics match. Verify identical results, including null cases, and the disappearance of BatchEvalPython ; do not infer speedup solely from syntax.",
+          "verify": "Plans differ at the expected Python boundary and null-case results agree."
+        }
+      ]
+    },
+    {
+      "id": "case-09",
+      "kind": "symptom",
+      "branch": "performance/sql",
+      "title": "A small dimension table is broadcast",
+      "aliases": [
+        "BroadcastHashJoin",
+        "BroadcastExchange"
+      ],
+      "upstream": [
+        "big-broadcast-join"
+      ],
+      "primary": [
+        "https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/joins/BroadcastHashJoinExec.scala#L40-L70",
+        "https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/joins/BroadcastHashJoinExec.scala#L133-L145"
+      ],
+      "related": [
+        "broadcast-size",
+        "broadcast-despite-disable"
+      ],
+      "cases": [
+        "09"
+      ],
+      "scope": "An orders table joins a small regions table on region_id . Join type and size estimates, or an applicable hint, allow a broadcast hash join.",
+      "reproduce": "Join spark.range(1000) to F.broadcast(spark.range(10)) on id ; materialize the result and inspect the final plan. Ten matching keys are expected. Compare with an unhinted run.",
+      "checks": [
+        {
+          "question": "Does the final plan actually build the small side and probe it from the streamed side?",
+          "inspect": "Broadcasting can save a large shuffle but requires space to build and distribute the relation. A “small” row count alone is not proof it fits. Look for BroadcastHashJoin , BuildLeft / BuildRight , and BroadcastExchange in the physical plan.",
+          "action": "Broadcast only a measured build side that fits. If it is too large, remove the hint and inspect the alternative plan. Verify the build side and result count, not merely a lower stage count.",
+          "verify": "The measured build side fits and join multiplicity is unchanged."
+        }
+      ]
+    },
+    {
+      "id": "case-10",
+      "kind": "symptom",
+      "branch": "performance/sql",
+      "title": "AQE splits a skewed join partition",
+      "aliases": [
+        "skewed join",
+        "skewed shuffle read"
+      ],
+      "upstream": [
+        "slow-skewed-join",
+        "key-skew"
+      ],
+      "primary": [
+        "https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/adaptive/OptimizeSkewedJoin.scala#L46-L193",
+        "https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/adaptive/OptimizeSkewedJoin.scala#L213-L258"
+      ],
+      "related": [
+        "key-skew",
+        "shuffle-width"
+      ],
+      "cases": [
+        "10"
+      ],
+      "scope": "An eligible sort-merge join has one very large reducer partition for a popular key. Adaptive Query Execution (AQE) and skew-join handling are enabled.",
+      "reproduce": "In a test session disable automatic broadcast, enable AQE/skew join, and use eight shuffle partitions. Spread a heavily repeated key over many map partitions, include several smaller keys, and join to a unique-key dimension. Lower the skew-size threshold for this small fixture and inspect the final plan after the action.",
+      "checks": [
+        {
+          "question": "Does the join have a splittable skewed reducer rather than uniformly large partitions?",
+          "inspect": "Tail latency can fall at the cost of extra reads and tasks. Not every big partition is splittable or eligible. Inspect the final adaptive plan and skewed shuffle reads, not just the pre-execution plan. Unlike case 13, this changes the division of work instead of duplicating the same task.",
+          "action": "First verify the input skew and eligibility. If Spark splits it, compare maximum task read size/duration against the median and confirm row counts are unchanged. A hot key in one unsplittable map block may need upstream repartitioning or a different key strategy.",
+          "verify": "The final adaptive plan and maximum task size confirm that the hot join split."
+        }
+      ]
+    },
+    {
+      "id": "case-11",
+      "kind": "error",
+      "branch": "data/transfer",
+      "title": "A reducer cannot fetch a shuffle block",
+      "aliases": [
+        "FetchFailed",
+        "FetchFailedException",
+        "missing shuffle block"
+      ],
+      "upstream": [
+        "error-shuffle"
+      ],
+      "primary": [
+        "https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/DAGScheduler.scala#L4224-L4263",
+        "https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/DAGScheduler.scala#L4281-L4324"
+      ],
+      "related": [
+        "shuffle-meta",
+        "shuffle-checksum",
+        "shuffle-network"
+      ],
+      "cases": [
+        "11"
+      ],
+      "scope": "A reducer needs a remote map output. Its serving node or files are gone, and fetch retries cannot deliver the bytes. Assume a normal, durable shuffle.",
+      "reproduce": "Use DAGSchedulerSuite 's run trivial shuffle with fetch failure fixture: finish the map stage, inject a fetch failure for the current consumer attempt, then complete the resubmitted work. Compare the producer location and stage attempt IDs before and after.",
+      "checks": [
+        {
+          "question": "Is the producer output genuinely unavailable at its recorded serving address?",
+          "inspect": "Retrying only the reducer against the old address would not help. Look for FetchFailed followed by stage resubmission and new map task attempts. Executor exit alone does not imply data loss if an external shuffle service still serves the files.",
+          "action": "Correlate the missing producer block with executor, disk, and shuffle-service logs. Restore a reliable serving path; verify both regenerated map output and a successful downstream retry. More fetch retries cannot recreate a deleted file.",
+          "verify": "Fresh map output is registered, transferred and consumed by a completed reduce attempt."
+        }
+      ]
+    },
+    {
+      "id": "case-12",
+      "kind": "error",
+      "branch": "execution/python",
+      "title": "The same partition fails on every attempt",
+      "aliases": [
+        "PythonException",
+        "ValueError",
+        "task failed 4 times"
+      ],
+      "upstream": [],
+      "primary": [
+        "https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/TaskSetManager.scala#L1139-L1163"
+      ],
+      "related": [
+        "case-24",
+        "python-memory",
+        "case-15"
+      ],
+      "cases": [
+        "12"
+      ],
+      "scope": "A Python mapping function raises an ordinary data-dependent exception whenever it encounters one malformed record in partition 12.",
+      "reproduce": "With spark.task.maxFailures=2 , run sc.parallelize(['1','bad','3'], 3).map(int).collect() on a test YARN application. Match the bad partition and ValueError across attempts.",
+      "checks": [
+        {
+          "question": "Do multiple attempts for the same partition raise the same user-code exception?",
+          "inspect": "More executors will not repair a deterministic bad record. Compare the partition index, attempt IDs, and Python exception across hosts. The action fails; whether the application ends depends on what the driver does with that exception.",
+          "action": "Validate or quarantine bad records before conversion; record rejected rows explicitly. Re-run the fixture and account for two accepted rows and one rejection, without repeated task failures.",
+          "verify": "The malformed input is explicitly accounted for and the same task no longer fails."
+        }
+      ]
+    },
+    {
+      "id": "case-13",
+      "kind": "symptom",
+      "branch": "execution/executor",
+      "title": "A slow task gets a speculative copy",
+      "aliases": [
+        "speculative task",
+        "another attempt succeeded"
+      ],
+      "upstream": [],
+      "primary": [
+        "https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/TaskSetManager.scala#L1308-L1365",
+        "https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/TaskSetManager.scala#L847-L880"
+      ],
+      "related": [
+        "key-skew",
+        "slow-host"
+      ],
+      "cases": [
+        "13"
+      ],
+      "scope": "With spark.speculation enabled, one task continues running far longer than its eligible peers. No task failure has been reported.",
+      "reproduce": "Replay TaskSetManagerSuite 's SPARK-26755 Ensure that a speculative task is submitted only once for execution . Observe two attempt IDs for one partition and a single logical result. For logs from a real run, match attempts by stage and partition.",
+      "checks": [
+        {
+          "question": "Are overlapping attempts for the same task index running on different executors?",
+          "inspect": "The job consumes one logical result, but both attempts may already have performed external side effects. A direct database insert inside foreachPartition is not made exactly-once by speculation. Look for distinct attempt IDs for the same task index and a sibling killed after success.",
+          "action": "If duplicate side effects are the problem, use an idempotent key or a commit protocol; disabling speculation alone does not eliminate normal retries. Verify one committed logical record per key.",
+          "verify": "There is one accepted logical result and no duplicate external side effects."
+        }
+      ]
+    },
+    {
+      "id": "case-14",
+      "kind": "error",
+      "branch": "execution/executor",
+      "title": "The driver stops hearing executor heartbeats",
+      "aliases": [
+        "Executor heartbeat timed out",
+        "no recent heartbeats"
+      ],
+      "upstream": [],
+      "primary": [
+        "https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/HeartbeatReceiver.scala#L210-L246"
+      ],
+      "related": [
+        "executor-heap",
+        "shuffle-network",
+        "node-loss"
+      ],
+      "cases": [
+        "14"
+      ],
+      "scope": "An executor stops sending timely Spark heartbeats, for example during a prolonged process pause or a network interruption. Its NM may still be heartbeating to YARN.",
+      "reproduce": "Use HeartbeatReceiverSuite 's expire dead hosts fixture: register a test executor, advance its test clock without an update, and run expiry. Repeat with an intervening heartbeat as the control.",
+      "checks": [
+        {
+          "question": "Does the driver explicitly expire the executor after the last-seen timeout?",
+          "inspect": "Executor heartbeat timed out proves the driver did not hear from the executor in time, not that the entire host failed. Compare Spark timestamps with NM/container health and the executor's GC logs.",
+          "action": "Check GC pauses, CPU starvation and the executor-to-driver network path before increasing timeouts. Verify last-seen timestamps recover and replacements stop; a healthy NM heartbeat is not the control for Spark RPC.",
+          "verify": "Heartbeats stay timely and replacements stop under equivalent load."
+        }
+      ]
+    },
+    {
+      "id": "case-15",
+      "kind": "error",
+      "branch": "execution/executor",
+      "title": "YARN preempts a healthy executor",
+      "aliases": [
+        "ContainerExitStatus.PREEMPTED",
+        "container was preempted"
+      ],
+      "upstream": [],
+      "primary": [
+        "https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/deploy/yarn/YarnAllocator.scala#L849-L887",
+        "https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/TaskEndReason.scala#L261-L276"
+      ],
+      "related": [
+        "case-16",
+        "node-loss"
+      ],
+      "cases": [
+        "15"
+      ],
+      "scope": "The YARN scheduler reclaims an executor container for resource sharing while it is running tasks.",
+      "reproduce": "Use the completed-container fixture in YarnAllocatorSuite (SPARK-26269). Feed a completion with PREEMPTED and inspect the allocator's reason; compare it with the memory-limit completion in case 16. No real queue preemption is needed.",
+      "checks": [
+        {
+          "question": "Does YARN explicitly label this executor completion as preemption?",
+          "inspect": "Work already done by interrupted tasks can be lost even though the failure is not charged to the code. Check for was preempted in the AM log before chasing a Python exception or increasing spark.task.maxFailures .",
+          "action": "If losses repeat, inspect queue policy and usable capacity, not just task code. Check that replacement executors register and lost work finishes without repeatedly charging application failures.",
+          "verify": "The lost attempt is classified correctly and replacement work finishes."
+        }
+      ]
+    },
+    {
+      "id": "case-16",
+      "kind": "error",
+      "branch": "execution/executor",
+      "title": "YARN kills an executor for exceeding physical memory",
+      "aliases": [
+        "Container killed by YARN for exceeding memory limits",
+        "KILLED_EXCEEDED_PMEM",
+        "physical memory used"
+      ],
+      "upstream": [
+        "container-oom",
+        "error-executor-out-of-memory"
+      ],
+      "primary": [
+        "https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/TaskEndReason.scala#L261-L276",
+        "https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/deploy/yarn/YarnAllocator.scala#L888-L907"
+      ],
+      "related": [
+        "executor-heap",
+        "python-memory",
+        "memory-owner"
+      ],
+      "cases": [
+        "16"
+      ],
+      "scope": "The executor's container exceeds its enforced physical-memory limit. Python workers, JVM heap, and native allocations can contribute; a JVM OutOfMemoryError is not required.",
+      "reproduce": "In the same allocator fixture, submit a synthetic KILLED_EXCEEDED_PMEM completion. Correlate its classification with a historical container report showing physical memory usage. Do not exhaust a shared node to reproduce this.",
+      "checks": [
+        {
+          "question": "Do the NodeManager diagnostics show a physical container memory-limit violation?",
+          "inspect": "Inspect the container's physical usage/limit and partition sizes, not just the Spark UI's storage-memory chart. Contrast case 01 (the request was never accepted) and case 15 (capacity was reclaimed, not exceeded).",
+          "action": "Measure container RSS, including Python and native work, and locate oversized partitions. Reduce the working set or adjust overhead within YARN limits. Verify comparable data completes without another physical-memory kill.",
+          "verify": "Peak container usage remains below the actual allocation for the offending input."
+        }
+      ]
+    },
+    {
+      "id": "case-17",
+      "kind": "error",
+      "branch": "data/transfer",
+      "title": "Collect exceeds the driver result limit",
+      "aliases": [
+        "Total size of serialized results",
+        "spark.driver.maxResultSize",
+        "maxResultSize exceeded"
+      ],
+      "upstream": [
+        "driver-max-result-size",
+        "error-driver-max-result-size",
+        "best-pratice-collect"
+      ],
+      "primary": [
+        "https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/executor/Executor.scala#L1018-L1043",
+        "https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/TaskSetManager.scala#L810-L827"
+      ],
+      "related": [
+        "range-sample",
+        "broadcast-size",
+        "kryo-limit"
+      ],
+      "cases": [
+        "17"
+      ],
+      "scope": "A PySpark RDD collect() requests every record. Suppose 100 partitions each return about 6 MiB serialized, with spark.driver.maxResultSize set to 512 MiB. Every partition fits individually; their total does not.",
+      "reproduce": "Use a fresh test context with spark.driver.maxResultSize=1m . Collect several partitions of small, distinct byte arrays well under 1 MiB each but over 1 MiB together. Read the error's serialized-byte total; compression affects the required sample size.",
+      "checks": [
+        {
+          "question": "Does the task-set error name cumulative serialized result bytes rather than one object or task payload?",
+          "inspect": "The driver error refers to the total size of serialized results . Spreading identical output over more partitions or fetching via block managers does not reduce that total. A limit of zero disables the guard, not the driver's physical memory limit.",
+          "action": "Aggregate or write distributed output and return only a bounded summary. Confirm the expected aggregate without materializing all rows in Python. Raising the limit does not create driver memory.",
+          "verify": "The action returns the bounded summary, or distributed output reconciles to the expected total."
+        }
+      ]
+    },
+    {
+      "id": "case-18",
+      "kind": "error",
+      "branch": "data/write",
+      "title": "All write tasks succeed but the job commit fails",
+      "aliases": [
+        "commitJob",
+        "job commit failed"
+      ],
+      "upstream": [
+        "write-fails"
+      ],
+      "primary": [
+        "https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/FileFormatWriter.scala#L292-L304",
+        "https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/FileFormatWriter.scala#L214-L222",
+        "https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/internal/io/HadoopMapReduceCommitProtocol.scala#L215-L289"
+      ],
+      "related": [
+        "write-stage",
+        "object-commit",
+        "case-38"
+      ],
+      "cases": [
+        "18"
+      ],
+      "scope": "A V1 Hadoop-backed file write, such as a Parquet write using that path, finishes its output tasks but encounters a filesystem error during commitJob .",
+      "reproduce": "Use ParquetIOSuite 's JobCommitFailureParquetOutputCommitter with a scratch output path. Its injected failure is in commitJob , not commitTask . Compare successful task commits with the driver exception.",
+      "checks": [
+        {
+          "question": "Did task commits finish before the driver-side job commit threw?",
+          "inspect": "Green tasks do not prove the dataset was published. Check driver commit/abort logs and the destination before retrying. Cleanup is committer- and filesystem-dependent; do not assume universal atomic rollback or extend this V1 behavior to every transactional table format.",
+          "action": "Correct the filesystem or committer cause and inspect partial output before retrying. Verify a fresh read of the intended dataset after successful job commit, not just green tasks.",
+          "verify": "A fresh consumer reads the committed dataset, with no unaccounted partial output."
+        }
+      ]
+    },
+    {
+      "id": "case-19",
+      "kind": "error",
+      "branch": "execution/application",
+      "title": "One job group is cancelled in a shared application",
+      "aliases": [
+        "Job cancelled",
+        "cancelJobGroup"
+      ],
+      "upstream": [],
+      "primary": [
+        "https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/DAGScheduler.scala#L2471-L2500",
+        "https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/DAGScheduler.scala#L5276-L5312"
+      ],
+      "related": [
+        "case-20",
+        "case-12"
+      ],
+      "cases": [
+        "19"
+      ],
+      "scope": "Two clients share a Spark application, or two submitting threads run jobs under different group IDs. The driver calls sc.cancelJobGroup(\"report-A\") .",
+      "reproduce": "Run two bounded slow jobs from separate submitting threads with distinct group IDs. Set the group in each submitting thread and cancel only one while both are active. Compare job states in the UI.",
+      "checks": [
+        {
+          "question": "Did the scheduler cancel the same group ID as the failed caller?",
+          "inspect": "A job marked cancelled beside a still-running shared stage is consistent. Killing the entire YARN application would have a much wider effect. Check group IDs and stage ownership in addition to the app's YARN state.",
+          "action": "Bind group IDs to requests and clear thread-local properties when reusing threads. Verify the chosen action was cancelled, the unrelated action completed, and the same context accepts another job.",
+          "verify": "Only the selected group stops; a different group and a subsequent action still succeed."
+        }
+      ]
+    },
+    {
+      "id": "case-20",
+      "kind": "error",
+      "branch": "execution/application",
+      "title": "The cluster-mode AM crashes and YARN retries it",
+      "aliases": [
+        "ApplicationMaster failed",
+        "application attempt restarted"
+      ],
+      "upstream": [],
+      "primary": [
+        "https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/deploy/yarn/ApplicationMaster.scala#L496-L539",
+        "https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/deploy/yarn/YarnRMClient.scala#L125-L135",
+        "https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/deploy/yarn/ApplicationMaster.scala#L225-L254"
+      ],
+      "related": [
+        "case-04",
+        "node-loss",
+        "case-16"
+      ],
+      "cases": [
+        "20"
+      ],
+      "scope": "The cluster-mode AM/driver container dies before it can report success. YARN policy and remaining attempt budget allow another attempt.",
+      "reproduce": "In a disposable managed YARN test with two AM attempts allowed, log an entry-point marker and run a bounded, long-enough action. Have the mini-cluster harness fail only the first AM container , not the application. Use yarn applicationattempt -list to compare attempt IDs and entry markers.",
+      "checks": [
+        {
+          "question": "Is there a new attempt ID under the same YARN application ID?",
+          "inspect": "If the first attempt appended records before it died, rerunning the script can append them again unless the application or sink prevents duplicates. Correlate logs by attempt ID , not just application ID. This is a whole-driver restart, not the task retry in case 12 or the stage repair in case 11.",
+          "action": "Fix the AM loss reason and make publication idempotent across attempts. Verify one logical output under the same application ID even though the script entered twice. Changing task retry limits cannot restore the old driver.",
+          "verify": "Attempt IDs distinguish restarts and previously published data is not duplicated."
+        }
+      ]
+    },
+    {
+      "id": "case-21",
+      "kind": "symptom",
+      "branch": "launch/submission",
+      "title": "Every submission uploads the Spark JARs",
+      "aliases": [
+        "falling back to uploading libraries under SPARK_HOME"
+      ],
+      "upstream": [
+        "toolargejar"
+      ],
+      "primary": [
+        "https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/deploy/yarn/Client.scala#L659-L734"
+      ],
+      "related": [
+        "large-jar",
+        "capacity-wait"
+      ],
+      "cases": [
+        "21"
+      ],
+      "scope": "Even a tiny orders.py takes a long time to submit. Neither spark.yarn.archive nor spark.yarn.jars is configured.",
+      "reproduce": "Submit a minimal script without either Spark-JAR setting. Inspect the fallback warning and staged archive; then submit the same script using a compatible prebuilt spark.yarn.archive on HDFS.",
+      "checks": [
+        {
+          "question": "Does the submission client rebuild and upload the Spark distribution on each run?",
+          "inspect": "Look for falling back to uploading libraries under SPARK_HOME in the submission log. This delay precedes executor allocation; adding executors won't shorten it.",
+          "action": "Store versioned, cluster-readable Spark archives with JARs at the archive root. Verify the fallback warning disappears and the AM loads the intended classes. Measure submission time separately from executor startup.",
+          "verify": "No fallback JAR ZIP is rebuilt; both the AM and executor load the intended classes."
+        }
+      ]
+    },
+    {
+      "id": "case-22",
+      "kind": "symptom",
+      "branch": "launch/submission",
+      "title": "Spark-submit exits before the report is ready",
+      "aliases": [
+        "waitAppCompletion=false",
+        "submitted but output missing"
+      ],
+      "upstream": [],
+      "primary": [
+        "https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/deploy/yarn/Client.scala#L1378-L1412"
+      ],
+      "related": [
+        "case-18",
+        "case-38"
+      ],
+      "cases": [
+        "22"
+      ],
+      "scope": "A shell pipeline starts a downstream reader as soon as a cluster-mode spark-submit command exits zero. It used spark.yarn.submit.waitAppCompletion=false .",
+      "reproduce": "Submit a script with a brief delay before a scratch output write, using spark.yarn.submit.waitAppCompletion=false . Record shell exit, YARN state, and first readable output. Repeat with the setting true.",
+      "checks": [
+        {
+          "question": "Did the submitter exit on a nonterminal YARN application report?",
+          "inspect": "A submit log ending with an ACCEPTED or RUNNING report is not a completion receipt. Use the application ID to check final status, or retain completion monitoring when the next step depends on published output.",
+          "action": "Make the consumer wait for terminal success and the sink's publication condition, or retain client monitoring. Verify the downstream reader cannot start against an incomplete dataset.",
+          "verify": "The dependent reader starts only after terminal success and publication."
+        }
+      ]
+    },
+    {
+      "id": "case-23",
+      "kind": "error",
+      "branch": "execution/python",
+      "title": "A module imports on the driver but not on workers",
+      "aliases": [
+        "ModuleNotFoundError",
+        "No module named"
+      ],
+      "upstream": [],
+      "primary": [
+        "https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/python/pyspark/core/context.py#L1965-L1996",
+        "https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/python/pyspark/worker_util.py#L196-L226"
+      ],
+      "related": [
+        "jvm-linkage",
+        "case-24"
+      ],
+      "cases": [
+        "23"
+      ],
+      "scope": "The driver imports a local pure-Python helper, but an RDD function doing import pricing_rules raises ModuleNotFoundError on an executor.",
+      "reproduce": "Use a unique test module name installed only beside the driver script. Import it inside an RDD function. After observing the worker import error, put the module at the root of a versioned ZIP and pass it with --py-files on the next submission.",
+      "checks": [
+        {
+          "question": "Does the missing Python module import only in the driver's environment?",
+          "inspect": "Compare the module path on the driver with the import traceback in executor logs. Register the dependency before the affected action; adding the same path again is not an in-place package upgrade.",
+          "action": "Distribute the pure-Python dependency rather than editing one host. Return the module's version from each partition and verify the worker results, not just the driver's import.",
+          "verify": "Worker-side imports report the intended package version."
+        }
+      ]
+    },
+    {
+      "id": "case-24",
+      "kind": "error",
+      "branch": "execution/python",
+      "title": "A Python worker rejects the driver version",
+      "aliases": [
+        "PYTHON_VERSION_MISMATCH",
+        "Python in worker has different version"
+      ],
+      "upstream": [],
+      "primary": [
+        "https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/python/pyspark/worker.py#L141-L174",
+        "https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/python/pyspark/worker_util.py#L135-L151"
+      ],
+      "related": [
+        "case-23",
+        "python-memory"
+      ],
+      "cases": [
+        "24"
+      ],
+      "scope": "A built-in DataFrame aggregation succeeds, but a Python RDD task fails when the AM's Python driver uses Python 3.11 and the worker starts Python 3.12.",
+      "reproduce": "In a private test environment with two supported Python minors already installed, select one for the driver and the other for executors. Run a JVM-only expression, then sc.parallelize([1]).map(lambda x: x+1).collect() .",
+      "checks": [
+        {
+          "question": "Do worker and driver report different Python major.minor versions?",
+          "inspect": "The error names the worker and driver versions. Check the executables selected inside the containers ; Python patch-level differences alone are not this check.",
+          "action": "Point the containers to a consistent interpreter or packaged environment. Return sys.version_info[:2] from a worker and compare it to the driver, then verify the Python action returns [2] .",
+          "verify": "A Python action succeeds inside the worker using the required Python major.minor."
+        }
+      ]
+    },
+    {
+      "id": "case-25",
+      "kind": "error",
+      "branch": "execution/python",
+      "title": "A closure captures the SparkContext",
+      "aliases": [
+        "CONTEXT_ONLY_VALID_ON_DRIVER",
+        "SparkContext can only be used on the driver"
+      ],
+      "upstream": [],
+      "primary": [
+        "https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/python/pyspark/core/rdd.py#L5106-L5136",
+        "https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/python/pyspark/core/context.py#L490-L495"
+      ],
+      "related": [
+        "task-size",
+        "kryo-limit"
+      ],
+      "cases": [
+        "25"
+      ],
+      "scope": "A Python RDD transformation contains lambda row: (sc.applicationId, row) . The programmer only wanted a string, but the function references the driver context itself.",
+      "reproduce": "Evaluate sc.parallelize([1]).map(lambda x: (sc.applicationId, x)).collect() . Then assign app_id = sc.applicationId outside the lambda and repeat using app_id .",
+      "checks": [
+        {
+          "question": "Does serialization of the closure traverse sc or an object holding it?",
+          "inspect": "Look for CONTEXT_ONLY_VALID_ON_DRIVER in the serialization traceback, not four failed task attempts. Increasing the task retry limit does not fix this error.",
+          "action": "Capture the small value rather than sc , spark , or an object holding either. Verify the second closure returns the expected pair and the first failed before the task could execute.",
+          "verify": "The corrected closure returns the intended value without referencing the driver context."
+        }
+      ]
+    },
+    {
+      "id": "case-26",
+      "kind": "symptom",
+      "branch": "data/transfer",
+      "title": "Local iteration still needs room for a partition",
+      "aliases": [
+        "toLocalIterator",
+        "partition too large for driver"
+      ],
+      "upstream": [
+        "best-pratice-collect"
+      ],
+      "primary": [
+        "https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/api/python/PythonRDD.scala#L262-L306"
+      ],
+      "related": [
+        "case-17",
+        "large-row"
+      ],
+      "cases": [
+        "26"
+      ],
+      "scope": "A report switches from rdd.collect() to rdd.toLocalIterator() to avoid holding the whole result, but one exceptionally large partition still overwhelms the driver.",
+      "reproduce": "Iterate over sc.parallelize(range(8), 4).toLocalIterator(prefetchPartitions=False) one element at a time and observe jobs. Repeat with prefetch on and compare the timing of the next partition job.",
+      "checks": [
+        {
+          "question": "Does the iterator consume an oversized partition, or is the caller accumulating all rows?",
+          "inspect": "Expect successive partition jobs, not one RPC per row. Budget for the largest partition (potentially two with prefetch); limiting driver retention is not a guarantee that an individual partition result fits.",
+          "action": "Consume incrementally; do not rebuild a list. If a single partition is oversized, change partitioning or keep processing distributed. Verify bounded partition sizes and equivalent output counts.",
+          "verify": "The consumer stays bounded for the largest partition while returning equivalent records."
+        }
+      ]
+    },
+    {
+      "id": "case-27",
+      "kind": "symptom",
+      "branch": "performance/work",
+      "title": "Taking three records starts several jobs",
+      "aliases": [
+        "take starts several jobs",
+        "repeated runJob"
+      ],
+      "upstream": [],
+      "primary": [
+        "https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/python/pyspark/core/rdd.py#L2680-L2720"
+      ],
+      "related": [
+        "case-35",
+        "scan-layout"
+      ],
+      "cases": [
+        "27"
+      ],
+      "scope": "rdd.filter(is_late).take(3) runs on an RDD whose early partitions contain no late records. The Jobs tab shows multiple successful jobs.",
+      "reproduce": "Run sc.parallelize(range(100), 100).filter(lambda x: x >= 90).take(3) . Compare with x < 10 on the same input. Both return three rows, but the late-match run scans farther.",
+      "checks": [
+        {
+          "question": "Are the first input partitions empty after the filter during take?",
+          "inspect": "Several jobs at the same take call site, with no failed attempts, can be intentional. take(3) limits the result size, not how much input must be searched.",
+          "action": "For an inspection sample, accept the extra search. For recurring large scans, prune or index the source where possible. Verify reduced input work rather than raising the requested sample size.",
+          "verify": "Scan batches and returned matches explain all observed jobs."
+        }
+      ]
+    },
+    {
+      "id": "case-28",
+      "kind": "symptom",
+      "branch": "performance/work",
+      "title": "A window query sends every row to one partition",
+      "aliases": [
+        "Exchange SinglePartition",
+        "No Partition Defined for Window operation",
+        "AllTuples"
+      ],
+      "upstream": [
+        "singlepartition"
+      ],
+      "primary": [
+        "https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/window/WindowExecBase.scala#L35-L47",
+        "https://holdenk.github.io/spark-flowchart/details/singlepartition/"
+      ],
+      "related": [
+        "case-30",
+        "key-skew"
+      ],
+      "cases": [
+        "28"
+      ],
+      "scope": "A report computes a row number ordered by time, without specifying a window partition. There are eight input partitions but one task at the window.",
+      "reproduce": "Use df = spark.range(64, numPartitions=8) and row_number().over(Window.orderBy('id')) (from pyspark.sql.functions and pyspark.sql.window ). Select the rank and collect the small result so the optimizer cannot prune the window. Inspect the exchange and task count.",
+      "checks": [
+        {
+          "question": "Does an unpartitioned window require a global order?",
+          "inspect": "Exchange SinglePartition and the No Partition Defined warning point to operator semantics, not missing YARN capacity.",
+          "action": "If ranks should restart per customer, use Window.partitionBy('customer').orderBy('id') on a keyed fixture. Verify rank 1 per customer and the disappearance of the global-window requirement. Do not change the key if the required rank is genuinely global.",
+          "verify": "The required ranking semantics hold on multiple groups, ties and boundary rows."
+        }
+      ]
+    },
+    {
+      "id": "case-29",
+      "kind": "symptom",
+      "branch": "performance/work",
+      "title": "Grouping values moves more data than summing them",
+      "aliases": [
+        "groupByKey",
+        "partial aggregation",
+        "no partial aggregate"
+      ],
+      "upstream": [
+        "partial_aggregates",
+        "slow-reduce"
+      ],
+      "primary": [
+        "https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/python/pyspark/core/rdd.py#L4019-L4049",
+        "https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/python/pyspark/core/rdd.py#L3366-L3379",
+        "https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/python/pyspark/core/rdd.py#L3838-L3856"
+      ],
+      "related": [
+        "key-skew",
+        "python-memory"
+      ],
+      "cases": [
+        "29"
+      ],
+      "scope": "A pair RDD has many (region, amount) records per input partition. The code uses groupByKey().mapValues(sum) ; the only desired result is one sum per region.",
+      "reproduce": "Build pairs = sc.parallelize(range(20000), 8).map(lambda i: (i % 4, 1)) . Compare pairs.groupByKey().mapValues(sum) and pairs.reduceByKey(lambda a,b: a+b) . Materialize both and read shuffle metrics.",
+      "checks": [
+        {
+          "question": "Is the code retaining all values although its desired output is a mergeable summary?",
+          "inspect": "Compare shuffle bytes, not just final row counts or task counts. A single hot key still belongs to one final reduce partition.",
+          "action": "For this sum, use reduceByKey . Verify all four totals are 5,000. Compare measured shuffle bytes on the same inputs rather than assuming a fixed reduction ratio.",
+          "verify": "Partial sums match original totals and measured shuffle traffic improves."
+        }
+      ]
+    },
+    {
+      "id": "case-30",
+      "kind": "symptom",
+      "branch": "performance/work",
+      "title": "Coalescing to one leaves most cores idle",
+      "aliases": [
+        "coalesce(1)",
+        "only one active task"
+      ],
+      "upstream": [
+        "toofew_tasks"
+      ],
+      "primary": [
+        "https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/rdd/RDD.scala#L550-L593"
+      ],
+      "related": [
+        "case-28",
+        "shuffle-width"
+      ],
+      "cases": [
+        "30"
+      ],
+      "scope": "A narrow, uncached RDD pipeline ends with coalesce(1) before a save. YARN shows plenty of executors, but one task does most of the work.",
+      "reproduce": "Compare sc.parallelize(range(1000), 8).map(str).coalesce(1) with the same pipeline using repartition(1) ; save to two fresh scratch paths. Inspect upstream versus final-stage task counts.",
+      "checks": [
+        {
+          "question": "Is there a narrow coalesce-to-one dependency before expensive upstream work?",
+          "inspect": "Compare the stage DAG and number of tasks before requesting more containers. A one-task stage is a work-partitioning limit, not necessarily a YARN shortage.",
+          "action": "Avoid forcing one output partition unless the consumer requires it. If it does, shuffle later, after expensive parallel work; verify output equivalence and where the one-task stage now begins.",
+          "verify": "The upstream stages have the intended task counts and output is equivalent."
+        }
+      ]
+    },
+    {
+      "id": "case-31",
+      "kind": "symptom",
+      "branch": "performance/retention",
+      "title": "A reliable checkpoint is empty until an action",
+      "aliases": [
+        "getCheckpointFile returns None",
+        "checkpoint not materialized"
+      ],
+      "upstream": [
+        "toobigdag"
+      ],
+      "primary": [
+        "https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/python/pyspark/core/rdd.py#L417-L458",
+        "https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/rdd/ReliableCheckpointRDD.scala#L155-L187",
+        "https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/rdd/RDDCheckpointData.scala#L62-L83"
+      ],
+      "related": [
+        "lineage",
+        "case-07"
+      ],
+      "cases": [
+        "31"
+      ],
+      "scope": "The driver calls sc.setCheckpointDir(...) on shared storage and rdd.checkpoint() before its first action. rdd.getCheckpointFile() still returns None .",
+      "reproduce": "Set a fresh HDFS checkpoint directory; persist a small RDD, call checkpoint() before its first action and inspect getCheckpointFile() . Call count() and inspect it again.",
+      "checks": [
+        {
+          "question": "Was the RDD marked for checkpointing but not yet reliably materialized?",
+          "inspect": "Compare getCheckpointFile() before and after count() , or look for Done checkpointing RDD in the driver log. These files checkpoint the RDD, not the Python driver's variables or the YARN application attempt.",
+          "action": "For durable lineage truncation, use accessible reliable storage and wait for materialization. Verify the returned checkpoint path and the shortened dependency chain; use persistence alone if the goal is only faster reuse.",
+          "verify": "The checkpoint path exists after materialization and later dependencies use it."
+        }
+      ]
+    },
+    {
+      "id": "case-32",
+      "kind": "symptom",
+      "branch": "performance/retention",
+      "title": "A task spills to disk and still succeeds",
+      "aliases": [
+        "memoryBytesSpilled",
+        "diskBytesSpilled",
+        "spill to disk"
+      ],
+      "upstream": [
+        "slow-reduce"
+      ],
+      "primary": [
+        "https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/util/collection/Spillable.scala#L86-L113",
+        "https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/util/collection/ExternalSorter.scala#L690-L703"
+      ],
+      "related": [
+        "disk-full",
+        "executor-heap",
+        "shuffle-width"
+      ],
+      "cases": [
+        "32"
+      ],
+      "scope": "A JVM-side operation using ExternalSorter builds a collection that needs more execution memory than the task can obtain. The task is not killed.",
+      "reproduce": "Use ExternalSorterSuite 's spilling with hash collisions : it lowers the element spill threshold for a bounded fixture. Compare sorted/aggregated output and the spill path with a control that fits in memory.",
+      "checks": [
+        {
+          "question": "Do completed tasks show significant spill with disk I/O dominating the stage?",
+          "inspect": "A successful stage can show both spill metrics and spend time in disk I/O. This is neither a YARN memory-limit kill (case 16) nor evidence that an RDD cache block was evicted.",
+          "action": "For repeated costly spill, reduce records per partition or combine earlier before adding memory. Compare spill bytes and duration and identical output. A modest spill on a successful task needs no corrective action.",
+          "verify": "Output is correct and the original spill bottleneck improves or is demonstrably acceptable."
+        }
+      ]
+    },
+    {
+      "id": "case-33",
+      "kind": "error",
+      "branch": "performance/retention",
+      "title": "A broadcast works after unpersist but not after destroy",
+      "aliases": [
+        "Attempted to use Broadcast",
+        "after it was destroyed"
+      ],
+      "upstream": [],
+      "primary": [
+        "https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/broadcast/Broadcast.scala#L86-L118",
+        "https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/broadcast/TorrentBroadcast.scala#L233-L251"
+      ],
+      "related": [
+        "case-07",
+        "broadcast-size"
+      ],
+      "cases": [
+        "33"
+      ],
+      "scope": "Two actions use rates = sc.broadcast(lookup) . The driver calls rates.unpersist() or rates.destroy() between actions, expecting identical behavior.",
+      "reproduce": "Broadcast a small dictionary, look it up in an RDD action, call unpersist(blocking=True) , and repeat. Then destroy(blocking=True) and submit a new closure using the same handle.",
+      "checks": [
+        {
+          "question": "Was the handle destroyed before a later closure captured it?",
+          "inspect": "Failure preparing a later task that captures a destroyed broadcast is different from a live broadcast being fetched again after unpersist() . This is a user-created broadcast variable, not a SQL broadcast-join planning choice.",
+          "action": "Use unpersist for evictable, reusable data and destroy only after its last consumer. Create a fresh broadcast for subsequent jobs and verify equal lookup results.",
+          "verify": "A valid broadcast handle is used by each later task."
+        }
+      ]
+    },
+    {
+      "id": "case-34",
+      "kind": "symptom",
+      "branch": "performance/sql",
+      "title": "An adaptive shuffle has fewer reader tasks than expected",
+      "aliases": [
+        "AQEShuffleRead coalesced",
+        "fewer reader tasks"
+      ],
+      "upstream": [
+        "toomany_tasks",
+        "slow-reduce"
+      ],
+      "primary": [
+        "https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/adaptive/CoalesceShufflePartitions.scala#L47-L129"
+      ],
+      "related": [
+        "shuffle-width",
+        "case-10"
+      ],
+      "cases": [
+        "34"
+      ],
+      "scope": "An eligible SQL aggregation is planned with 200 shuffle partitions, but after filtering, most shuffle outputs are tiny. AQE and shuffle partition coalescing are enabled.",
+      "reproduce": "Group a small spark.range with multiple input partitions by id % 5 using 200 initial SQL shuffle partitions. Execute with AQE enabled; compare the final adaptive plan with coalescing enabled and disabled.",
+      "checks": [
+        {
+          "question": "Does the final adaptive plan coalesce eligible small shuffle partitions?",
+          "inspect": "Inspect the final adaptive SQL plan for a coalesced AQEShuffleRead and compare map and reader task counts. An advisory size isn't a promise of a precise count.",
+          "action": "If the smaller reader stage is faster and the five totals match, keep it. If tasks become too large, adjust the advisory size and parallelism settings against observed shuffle bytes.",
+          "verify": "Reader group count and output in the final adaptive plan agree with measurements."
+        }
+      ]
+    },
+    {
+      "id": "case-35",
+      "kind": "symptom",
+      "branch": "performance/sql",
+      "title": "A date filter eliminates entire input partitions",
+      "aliases": [
+        "PartitionFilters",
+        "partition filter not pushed down"
+      ],
+      "upstream": [
+        "slow-partition_filter_pushdown",
+        "slow-map"
+      ],
+      "primary": [
+        "https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/PruneFileSourcePartitions.scala#L50-L94"
+      ],
+      "related": [
+        "scan-layout",
+        "scan-volume"
+      ],
+      "cases": [
+        "35"
+      ],
+      "scope": "A V1 catalog-backed Parquet table is partitioned by sale_date . Compare WHERE sale_date = DATE '2026-11-24' with a filter only on the non-partition amount column.",
+      "reproduce": "Create a disposable V1 catalog Parquet table partitioned by sale_date with two dates. Compare a date equality predicate with an amount-only predicate; inspect explain('formatted') and scan file counts after execution.",
+      "checks": [
+        {
+          "question": "Does the scan visit dates that an eligible partition predicate could have excluded?",
+          "inspect": "Compare PartitionFilters in explain(\"formatted\") and the scan's file metrics. PushedFilters is not proof of directory pruning.",
+          "action": "Use a direct predicate on the partition key where it expresses the requested rows. Verify only the intended dates are read and keep any necessary data-column filter; predicate pushdown and directory pruning are different.",
+          "verify": "Actual scan metrics show only the required partitions, with the same correct rows."
+        }
+      ]
+    },
+    {
+      "id": "case-36",
+      "kind": "error",
+      "branch": "data/files",
+      "title": "One Parquet file has an incompatible column type",
+      "aliases": [
+        "SchemaColumnConvertNotSupportedException",
+        "FAILED_READ_FILE.PARQUET_COLUMN_DATA_TYPE_MISMATCH",
+        "Parquet column cannot be converted"
+      ],
+      "upstream": [
+        "SchemaColumnConvertNotSupportedException"
+      ],
+      "primary": [
+        "https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/test/scala/org/apache/spark/sql/execution/datasources/parquet/ParquetSchemaSuite.scala#L1036-L1081",
+        "https://holdenk.github.io/spark-flowchart/details/SchemaColumnConvertNotSupportedException/"
+      ],
+      "related": [
+        "wrong-format",
+        "damaged-input"
+      ],
+      "cases": [
+        "36"
+      ],
+      "scope": "The report requests amount INT , but one batch of Parquet files contains a string amount . The file exists and its footer is readable.",
+      "reproduce": "Write a scratch Parquet file with a string amount of '42' and read it with spark.read.schema('amount INT').parquet(path).select('amount').collect() , with the vectorized reader enabled. Contrast with reading the file's native string schema.",
+      "checks": [
+        {
+          "question": "Does the reported column have an unsupported physical-to-requested type conversion in the offending file?",
+          "inspect": "Compare the expected and actual types in the error with the schema of the offending file alone. count() can prune the column; materialize the values.",
+          "action": "Read each compatible batch with its native schema, validate values, cast to the canonical type, and rewrite to a new path. Read that output back and check the type, count and total (42 for this fixture). Merely disabling vectorization is not a schema repair.",
+          "verify": "The repaired file reads a materialized amount column with the expected type and total."
+        }
+      ]
+    },
+    {
+      "id": "case-37",
+      "kind": "error",
+      "branch": "data/files",
+      "title": "An input file disappears after listing",
+      "aliases": [
+        "FileNotFoundException",
+        "FAILED_READ_FILE.FILE_NOT_EXIST",
+        "Skipped missing file"
+      ],
+      "upstream": [
+        "error-invalid-file"
+      ],
+      "primary": [
+        "https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/FileScanRDD.scala#L256-L290"
+      ],
+      "related": [
+        "wrong-format",
+        "damaged-input"
+      ],
+      "cases": [
+        "37"
+      ],
+      "scope": "A V1 file scan lists a partition successfully; another process removes a data file before its executor task opens it. The operator enables ignoreCorruptFiles and expects success.",
+      "reproduce": "Write two nonempty data files to a scratch directory. Supply an explicit schema, create the DataFrame and inspect inputFiles() to force listing; move one data file aside, then materialize a data column. Compare runs with ignoreMissingFiles off and on, restoring the fixture before each listing.",
+      "checks": [
+        {
+          "question": "Did a specific data file disappear between listing and opening the planned split?",
+          "inspect": "Compare executor warnings with the file listing and result counts. A green job after enabling the option is not evidence that the input snapshot was complete.",
+          "action": "Publish immutable input snapshots or coordinate retention with readers. Restore the missing file and verify the full expected row count; enable skipping only if partial results are explicitly acceptable.",
+          "verify": "All required files and row counts are present in a stable snapshot."
+        }
+      ]
+    },
+    {
+      "id": "case-38",
+      "kind": "error",
+      "branch": "data/write",
+      "title": "A rerun succeeds without writing anything",
+      "aliases": [
+        "PATH_ALREADY_EXISTS",
+        "output path already exists",
+        "SaveMode.Ignore"
+      ],
+      "upstream": [],
+      "primary": [
+        "https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/InsertIntoHadoopFsRelationCommand.scala#L123-L152"
+      ],
+      "related": [
+        "case-18",
+        "write-stage"
+      ],
+      "cases": [
+        "38"
+      ],
+      "scope": "A V1 Parquet batch is rerun against an existing output directory, once with the default error-if-exists mode and once with .mode(\"ignore\") .",
+      "reproduce": "Write a one-row Parquet dataset to a fresh path; attempt a different two-row write to that same path in default mode, then in ignore mode. Read back the path each time.",
+      "checks": [
+        {
+          "question": "Does the destination already exist and does the selected save mode prohibit insertion?",
+          "inspect": "A successful return with unchanged files is expected under ignore . Unlike case 18, this can happen before any task or job commit. It is not a content-based deduplication or concurrency guarantee.",
+          "action": "If a rerun should replace data, use an explicit publication policy and validate its scope first. Confirm the intended values after reading back; ignore should preserve the original one-row content.",
+          "verify": "Read-back distinguishes original preserved content from an intentionally replaced dataset."
+        }
+      ]
+    },
+    {
+      "id": "case-39",
+      "kind": "symptom",
+      "branch": "data/write",
+      "title": "Overwrite replaces only the dates written",
+      "aliases": [
+        "dynamicPartitionOverwrite",
+        "old date remains after overwrite"
+      ],
+      "upstream": [],
+      "primary": [
+        "https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/InsertIntoHadoopFsRelationCommand.scala#L63-L78",
+        "https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/internal/io/HadoopMapReduceCommitProtocol.scala#L190-L248"
+      ],
+      "related": [
+        "case-38",
+        "write-stage"
+      ],
+      "cases": [
+        "39"
+      ],
+      "scope": "An HDFS-backed V1 table is partitioned by date. A dynamic partition overwrite writes rows for Monday and Wednesday but none for Tuesday. The Hadoop file committer supports this mode.",
+      "reproduce": "Write Monday and Tuesday to a scratch partitionBy('day') Parquet dataset. Overwrite it with only Monday and Wednesday using .option('partitionOverwriteMode','dynamic') and a supporting committer.",
+      "checks": [
+        {
+          "question": "Was Tuesday absent from the input to a dynamic partition overwrite?",
+          "inspect": "Inspect the dates present in the input and the destination before and after commit. This is neither full-root overwrite nor a transactional upsert; commit behavior depends on the filesystem and committer.",
+          "action": "Use dynamic overwrite for replacement of touched dates, not per-row merge or full refresh. Verify Monday is replaced, Tuesday unchanged, Wednesday added; reconcile keys if duplicates or row-level updates matter.",
+          "verify": "Touched partitions are replaced, untouched dates remain and per-date totals reconcile."
+        }
+      ]
+    },
+    {
+      "id": "case-40",
+      "kind": "symptom",
+      "branch": "data/write",
+      "title": "One successful task creates three data files",
+      "aliases": [
+        "maxRecordsPerFile",
+        "more files than tasks"
+      ],
+      "upstream": [
+        "slow-writes-too-many-files"
+      ],
+      "primary": [
+        "https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/FileFormatWriter.scala#L133-L146",
+        "https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/FileFormatDataWriter.scala#L155-L198"
+      ],
+      "related": [
+        "small-files",
+        "skewed-write"
+      ],
+      "cases": [
+        "40"
+      ],
+      "scope": "A single successful V1 writer task receives 2,500 rows for an unpartitioned output directory with .option(\"maxRecordsPerFile\", 1000) .",
+      "reproduce": "Run spark.range(2500, numPartitions=1).write.option('maxRecordsPerFile',1000).parquet(path) on a fresh scratch path. Group the read-back rows by input_file_name() and count each group.",
+      "checks": [
+        {
+          "question": "Do the per-file row counts match the writer's rollover cap within one successful attempt?",
+          "inspect": "Compare data filenames with distinct c000 , c001 , c002 counters against the single successful task in the Stages UI. The cap limits rows , not file size in bytes; exclude markers such as _SUCCESS when counting data files.",
+          "action": "If rollover alone created unwanted tiny files, raise or remove the cap and repeat in a new directory. Verify counts of 1,000/1,000/500 before and 2,500 total after; for many writer tasks also inspect partitioning.",
+          "verify": "Count data files and rows per file; do not count marker files or attempts."
+        }
+      ]
+    },
+    {
+      "id": "memory-owner",
+      "kind": "error",
+      "branch": "execution/memory",
+      "title": "Out of memory: identify the process first",
+      "aliases": [
+        "java.lang.OutOfMemoryError",
+        "OutOfMemoryError",
+        "OOM",
+        "GC overhead limit exceeded",
+        "exit code 137",
+        "exit code 143"
+      ],
+      "upstream": [
+        "error-memory",
+        "error-executor-out-of-memory",
+        "container-oom"
+      ],
+      "primary": [
+        "https://spark.apache.org/docs/latest/tuning.html",
+        "https://spark.apache.org/docs/latest/running-on-yarn.html",
+        "https://spark.apache.org/docs/latest/web-ui.html"
+      ],
+      "related": [
+        "driver-heap",
+        "executor-heap",
+        "case-16",
+        "python-memory"
+      ],
+      "cases": [
+        "16",
+        "17"
+      ],
+      "scope": "The same JVM exception can originate in the AM/driver or an executor. A process exit code is not a memory measurement.",
+      "checks": [
+        {
+          "question": "Is the first heap exception in the driver JVM log?",
+          "inspect": "Match the hostname, JVM role and timestamp to the first exception, before the executor disconnect messages.",
+          "action": "Use the driver-heap investigation: distinguish collection, broadcast construction, and planning/metadata retention before sizing the heap.",
+          "verify": "The same bounded input should finish with spare driver heap and no earlier failure hidden by a later disconnect."
+        },
+        {
+          "question": "Does an executor stderr show a JVM heap or GC-overhead error first?",
+          "inspect": "Find its executor ID in the failed stage; examine task-size distribution, concurrency, cache occupancy and GC time.",
+          "action": "Use the executor-heap investigation. Change partition working set or concurrency according to that evidence, not driver memory.",
+          "verify": "Compare maximum partition size, executor GC time and retried tasks on the same input."
+        },
+        {
+          "question": "Does YARN report container physical memory exceeded without a Java heap error?",
+          "inspect": "Read NM diagnostics and compare total RSS with the allocation. Exit 137 or 143 alone is inconclusive.",
+          "action": "Use case 16; account for Python, Arrow, JNI and other native memory. If none of these observations match, obtain the cluster's termination reason.",
+          "verify": "Confirm the NM no longer reports a limit violation and the original action produces the expected output."
+        }
+      ],
+      "reproduce": "Take one failed application report and make a timeline from driver stderr, executor stderr, and YARN diagnostics. Verify the first failure belongs to the process you selected before trying any tuning change."
+    },
+    {
+      "id": "driver-heap",
+      "kind": "error",
+      "branch": "execution/memory",
+      "title": "Driver JVM runs out of heap",
+      "aliases": [
+        "driver OutOfMemoryError",
+        "driver Java heap space",
+        "driver GC overhead limit exceeded"
+      ],
+      "upstream": [
+        "error-driver-out-of-memory",
+        "best-pratice-collect",
+        "big-broadcast-join"
+      ],
+      "primary": [
+        "https://spark.apache.org/docs/latest/tuning.html",
+        "https://spark.apache.org/docs/latest/configuration.html",
+        "https://spark.apache.org/docs/latest/sql-performance-tuning.html"
+      ],
+      "related": [
+        "case-17",
+        "range-sample",
+        "broadcast-size",
+        "lineage"
+      ],
+      "cases": [
+        "17",
+        "26",
+        "31"
+      ],
+      "scope": "Applies to the JVM holding SparkContext; a Python MemoryError or YARN container kill is a different path.",
+      "checks": [
+        {
+          "question": "Does driver heap grow while collecting rows or building a broadcast?",
+          "inspect": "Locate the action and physical exchange. Compare result bytes or build-side size with available driver heap, allowing for deserialization and concurrent work.",
+          "action": "Write or aggregate distributed results; for broadcast remove an inappropriate hint or reduce the build side. Increase heap only after bounding the workload.",
+          "verify": "Compare returned record count, physical join strategy and peak driver heap, not just a higher limit."
+        },
+        {
+          "question": "Does the failure precede useful tasks or worsen on every iteration?",
+          "inspect": "Compare file counts, task/stage counts, plan depth and retained UI data across runs. A small dataset can still generate extensive metadata.",
+          "action": "Compact excessive file listings, simplify or checkpoint a growing plan, or reduce retained UI history when that is the measured owner.",
+          "verify": "Check time to first task and driver memory over several iterations, with identical output."
+        }
+      ],
+      "reproduce": "On a small fixed fixture compare collecting rows with a distributed summary or write. Inspect driver result bytes, plan, and heap observations; use a historical failure for the high-water mark rather than provoking OOM."
+    },
+    {
+      "id": "executor-heap",
+      "kind": "error",
+      "branch": "execution/memory",
+      "title": "Executor JVM heap or GC exhaustion",
+      "aliases": [
+        "executor Java heap space",
+        "executor OutOfMemoryError",
+        "GC overhead limit exceeded",
+        "ExecutorLostFailure"
+      ],
+      "upstream": [
+        "error-executor-out-of-memory",
+        "error-shuffle"
+      ],
+      "primary": [
+        "https://spark.apache.org/docs/latest/tuning.html",
+        "https://spark.apache.org/docs/latest/web-ui.html"
+      ],
+      "related": [
+        "case-16",
+        "large-row",
+        "key-skew",
+        "shuffle-width"
+      ],
+      "cases": [
+        "12",
+        "16",
+        "32"
+      ],
+      "scope": "Use executor stderr and the earliest failed task. ExecutorLostFailure alone does not identify the cause.",
+      "checks": [
+        {
+          "question": "Is one task much larger than its peers on repeated attempts?",
+          "inspect": "Compare max versus median shuffle read, group cardinality and any single exceptionally large row. Follow the partition across hosts.",
+          "action": "Split genuinely divisible work, handle hot keys, or remove an unbounded per-key collection. More executors alone do not divide one key.",
+          "verify": "Re-run with the same data and compare the largest task, completion and output cardinality."
+        },
+        {
+          "question": "Do many similarly sized tasks run concurrently with high GC on the same executor?",
+          "inspect": "Inspect executor cores, task concurrency, persisted datasets and peak JVM memory; compare with YARN total RSS.",
+          "action": "Reduce the per-task working set or simultaneous tasks per executor, release unnecessary caches, then size heap within the container allowance.",
+          "verify": "Compare GC fraction, spill, throughput and number of lost executors; ensure the bottleneck did not move to disk."
+        }
+      ],
+      "reproduce": "Compare a small uniform-key input with an equally sized hot-key input. Inspect max versus median task data and GC; use the failing executor log as the control for the original heap error."
+    },
+    {
+      "id": "python-memory",
+      "kind": "error",
+      "branch": "execution/memory",
+      "title": "Python worker or Arrow group exhausts memory",
+      "aliases": [
+        "MemoryError",
+        "ArrowMemoryError",
+        "Arrow allocation failed",
+        "Python worker exited unexpectedly",
+        "PythonException out of memory"
+      ],
+      "upstream": [
+        "pyudfoom",
+        "container-oom",
+        "failure-executor-large-record"
+      ],
+      "primary": [
+        "https://spark.apache.org/docs/latest/api/python/tutorial/sql/arrow_pandas.html",
+        "https://spark.apache.org/docs/latest/running-on-yarn.html"
+      ],
+      "related": [
+        "case-16",
+        "key-skew",
+        "large-row"
+      ],
+      "cases": [
+        "08",
+        "12",
+        "16",
+        "29"
+      ],
+      "scope": "Distinguish batched scalar/iterator APIs from APIs that materialize an entire group; behavior also depends on Spark and PyArrow versions.",
+      "checks": [
+        {
+          "question": "Is a grouped or cogrouped operation materializing a very large key?",
+          "inspect": "Measure the largest group and inspect the Python operator in the plan; look at RSS of the worker, not only JVM heap.",
+          "action": "Project unused fields out and use a partial/native aggregation if semantics permit. Do not assume a row-per-batch setting splits a whole logical group.",
+          "verify": "Verify identical per-key results and bounded peak group memory on the previously failing key."
+        },
+        {
+          "question": "Is memory proportional to Arrow batch width rather than one whole group?",
+          "inspect": "Inspect input columns, long strings/arrays and records per batch for the actual operator. Compare a smaller representative batch.",
+          "action": "For a batch-limited API reduce spark.sql.execution.arrow.maxRecordsPerBatch and narrow input columns. Budget Python/native memory in the container.",
+          "verify": "Compare worker RSS, batch throughput, row counts and the original failing input; avoid shrinking batches indefinitely."
+        }
+      ],
+      "reproduce": "On bounded data compare a grouped Python operation with a native partial aggregation where equivalent. Record group cardinalities, selected column widths, worker RSS and results; do not recreate an OOM."
+    },
+    {
+      "id": "driver-stack",
+      "kind": "error",
+      "branch": "execution/memory",
+      "title": "StackOverflowError in driver planning or serialization",
+      "aliases": [
+        "StackOverflowError",
+        "java.lang.StackOverflowError"
+      ],
+      "upstream": [
+        "error-driver-stack-overflow",
+        "toobigdag"
+      ],
+      "primary": [
+        "https://spark.apache.org/docs/latest/tuning.html",
+        "https://spark.apache.org/docs/latest/sql-performance-tuning.html"
+      ],
+      "related": [
+        "lineage",
+        "driver-heap"
+      ],
+      "cases": [
+        "31"
+      ],
+      "scope": "Stack depth and heap capacity are different. The predecessor article has a misleading heap-oriented title.",
+      "checks": [
+        {
+          "question": "Does the stack repeat planning, expression traversal, or serialization frames?",
+          "inspect": "Inspect a bounded stack excerpt, iteration count, logical plan depth and chained transformations. Confirm the exception actually originates on the driver.",
+          "action": "Flatten deeply nested expressions and break long iterative plans at a materialized checkpoint or durable intermediate.",
+          "verify": "Run several more iterations and verify plan depth no longer grows without bound."
+        },
+        {
+          "question": "Are the repeating frames in user code instead?",
+          "inspect": "Identify the first application frame and reproduce on a tiny fixture without increasing input size.",
+          "action": "Fix the recursive algorithm or missing termination condition. Do not apply a large per-thread stack setting as a blanket fix.",
+          "verify": "Confirm bounded stack depth for deep-but-valid inputs and compare output with a known-good sample."
+        }
+      ],
+      "reproduce": "Build a short iterative transformation chain in a scratch job. Compare plan depth and repeated stack frames with a version that materializes an intermediate. Stop at modest depth."
+    },
+    {
+      "id": "disk-full",
+      "kind": "error",
+      "branch": "execution/memory",
+      "title": "Executor local storage is full",
+      "aliases": [
+        "No space left on device",
+        "DiskBlockObjectWriter",
+        "ENOSPC",
+        "DiskErrorException"
+      ],
+      "upstream": [
+        "error-executor-out-of-disk",
+        "toobigdag"
+      ],
+      "primary": [
+        "https://spark.apache.org/docs/latest/running-on-yarn.html",
+        "https://spark.apache.org/docs/latest/tuning.html"
+      ],
+      "related": [
+        "case-32",
+        "lineage",
+        "skewed-write"
+      ],
+      "cases": [
+        "07",
+        "11",
+        "32"
+      ],
+      "scope": "Distinguish local shuffle/spill storage from a destination quota on HDFS or an object store.",
+      "checks": [
+        {
+          "question": "Does the failing path belong to a NodeManager local directory?",
+          "inspect": "Read the executor path and NM disk report; compare free bytes and inodes per local volume. On YARN check the effective LOCAL_DIRS.",
+          "action": "Have the cluster operator restore adequate healthy local capacity. Do not delete live shuffle files from active applications.",
+          "verify": "Check disk headroom through the peak shuffle and that the same stage completes without fetch failures."
+        },
+        {
+          "question": "Is the application continuously retaining intermediate data or spilling one hot reducer?",
+          "inspect": "Compare staged bytes, spill, hot keys, persisted RDDs, and iteration lifetime. Identify who owns the growing files.",
+          "action": "Unpersist unused caches, limit live lineage and reduce oversized partition work. If the error is at the final destination, address its quota separately.",
+          "verify": "Track disk usage across iterations rather than only at start, and reconcile final output."
+        }
+      ],
+      "reproduce": "Use a saved ENOSPC diagnostic to identify the failing volume. In a scratch job measure spill and free bytes with and without unnecessary persistence; never fill a shared volume."
+    },
+    {
+      "id": "large-row",
+      "kind": "error",
+      "branch": "execution/serialization",
+      "title": "One record exceeds the representation limit",
+      "aliases": [
+        "Cannot grow BufferHolder",
+        "size limitation 2147483632",
+        "Cannot allocate contiguous bytes",
+        "record too large"
+      ],
+      "upstream": [
+        "failure-executor-large-record",
+        "pyudfoom"
+      ],
+      "primary": [
+        "https://spark.apache.org/docs/latest/tuning.html",
+        "https://spark.apache.org/docs/latest/sql-performance-tuning.html"
+      ],
+      "related": [
+        "kryo-limit",
+        "python-memory",
+        "key-skew"
+      ],
+      "cases": [
+        "26",
+        "29"
+      ],
+      "scope": "A single wide row, array, or collect_list output cannot be split merely by increasing partition count.",
+      "checks": [
+        {
+          "question": "Does the failure follow one oversized record or one huge aggregate value?",
+          "inspect": "On a safe sample measure payload lengths and group cardinalities before/after aggregation; inspect generated row/BufferHolder or serializer frames.",
+          "action": "Change the representation: emit multiple bounded records, keep external payload references, or aggregate bounded summaries rather than one giant collection.",
+          "verify": "Check the maximum serialized row size and reconstruct a sample to verify data was not silently truncated."
+        },
+        {
+          "question": "Are ordinary rows individually small but the Python batch is wide?",
+          "inspect": "Compare projected column widths and operator type; distinguish one massive group from batches of independent rows.",
+          "action": "Use the Python-memory investigation and reduce batch size only where the API permits it.",
+          "verify": "Verify the largest group or batch separately and confirm full-row semantics."
+        }
+      ],
+      "reproduce": "Use small synthetic arrays of increasing length or a bounded collect_list group. Measure row size before and after aggregation; demonstrate the growth trend without approaching an encoder limit."
+    },
+    {
+      "id": "kryo-limit",
+      "kind": "error",
+      "branch": "execution/serialization",
+      "title": "Kryo serialization buffer overflow",
+      "aliases": [
+        "KRYO_BUFFER_OVERFLOW",
+        "KryoException: Buffer overflow",
+        "Kryo serialization failed: Buffer overflow",
+        "Kryo buffer overflow",
+        "Kyro buffer overflow"
+      ],
+      "upstream": [
+        "driver-max-result-size",
+        "failure-executor-large-record"
+      ],
+      "primary": [
+        "https://spark.apache.org/docs/latest/tuning.html",
+        "https://spark.apache.org/docs/latest/configuration.html",
+        "https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/serializer/KryoSerializer.scala#L442-L466"
+      ],
+      "related": [
+        "large-row",
+        "task-size",
+        "case-17"
+      ],
+      "cases": [
+        "17",
+        "25"
+      ],
+      "scope": "This is a serialization buffer for an object, not automatically the cumulative task-result budget.",
+      "checks": [
+        {
+          "question": "Does the cause chain name the Kryo writer and a bounded but oversized object?",
+          "inspect": "Record the serializer, where serialization occurs, actual object type, and current spark.kryoserializer.buffer.max. Compare with a representative serialized sample.",
+          "action": "Prefer splitting or compacting the object. If its measured, bounded size genuinely fits available memory, evaluate a modest supported buffer increase on a test job.",
+          "verify": "Verify the same object round-trips and executor memory remains within limits."
+        },
+        {
+          "question": "Does the actual message instead name cumulative serialized results or the RPC task envelope?",
+          "inspect": "Read the exact size, units, sender, and configuration name; the three limits protect different operations.",
+          "action": "Follow case 17 for aggregate results or task-size for a launch description. Changing Kryo settings does not change those limits.",
+          "verify": "Verify the named failing boundary, not an unrelated size knob, is no longer exceeded."
+        }
+      ],
+      "reproduce": "Serialize a representative bounded object with the application serializer. Compare the original representation with a compact or split form, confirming the decoded values are equivalent."
+    },
+    {
+      "id": "task-size",
+      "kind": "error",
+      "branch": "execution/serialization",
+      "title": "Serialized task exceeds the RPC launch limit",
+      "aliases": [
+        "Serialized task was bytes which exceeds max allowed",
+        "spark.rpc.message.maxSize",
+        "max serialized task size"
+      ],
+      "upstream": [
+        "max_serialized_task_size"
+      ],
+      "primary": [
+        "https://spark.apache.org/docs/latest/configuration.html",
+        "https://spark.apache.org/docs/latest/tuning.html",
+        "https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/cluster/CoarseGrainedSchedulerBackend.scala#L455-L479"
+      ],
+      "related": [
+        "case-25",
+        "kryo-limit",
+        "case-17"
+      ],
+      "cases": [
+        "25",
+        "33"
+      ],
+      "scope": "The driver checks the serialized task description before dispatch. This is not an executor returning too many result bytes.",
+      "checks": [
+        {
+          "question": "Does the driver log name a serialized task and spark.rpc.message.maxSize?",
+          "inspect": "Locate the offending stage; inspect captured state and data parallelized from a driver-side collection. Compare task size after removing the large input.",
+          "action": "Read data from partitioned storage or send a compact handle. For reusable read-only task data use an appropriately sized broadcast; avoid capturing an enclosing object unnecessarily.",
+          "verify": "Confirm tasks actually launch and that the task-size message vanishes without changing results."
+        },
+        {
+          "question": "Is it only a large-task warning rather than the hard launch rejection?",
+          "inspect": "Distinguish the warning text from the explicit size-limit exception, and check whether tasks execute.",
+          "action": "Reduce unnecessary payload to improve dispatch; for an unrelated failed stage follow its first actual exception instead of increasing RPC limits.",
+          "verify": "Compare scheduler delay and the final task end reason in the UI."
+        }
+      ],
+      "reproduce": "Compare the driver-reported task size of a small job capturing a bounded lookup with the same logic referencing a broadcast handle. Do not increase RPC limits to manufacture success."
+    },
+    {
+      "id": "broadcast-size",
+      "kind": "error",
+      "branch": "execution/driver",
+      "title": "Broadcast relation is too large or times out",
+      "aliases": [
+        "Cannot broadcast the table",
+        "Cannot broadcast table",
+        "Could not execute broadcast in",
+        "BROADCAST_TIMEOUT",
+        "broadcast exchange timeout",
+        "Cannot build hashed relation"
+      ],
+      "upstream": [
+        "big-broadcast-join",
+        "broadcast-with-disable",
+        "error-driver-max-result-size"
+      ],
+      "primary": [
+        "https://spark.apache.org/docs/latest/sql-performance-tuning.html",
+        "https://spark.apache.org/docs/latest/configuration.html",
+        "https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/exchange/BroadcastExchangeExec.scala#L176-L220"
+      ],
+      "related": [
+        "broadcast-despite-disable",
+        "driver-heap",
+        "case-17"
+      ],
+      "cases": [
+        "09",
+        "17"
+      ],
+      "scope": "A hard size/row bound, heap exhaustion, and a wait timeout have different remedies.",
+      "checks": [
+        {
+          "question": "Is the build relation above the supported limit or too large for driver/executor memory?",
+          "inspect": "Read the BroadcastExchange metrics, built side, row estimates, hints, and sizes of simultaneously live exchanges; do not use compressed file size as in-memory size.",
+          "action": "Project/filter the build side or remove a forced broadcast and choose a suitable shuffle join. A larger timeout cannot raise a size limit.",
+          "verify": "Verify the final physical plan and peak driver/executor memory, along with equal join results."
+        },
+        {
+          "question": "Does the exchange fit but spend the timeout waiting on its child job?",
+          "inspect": "Inspect build-side task durations, scheduling/wait time and skew; check the exact timeout exception before altering settings.",
+          "action": "Fix upstream scheduling or skew first. Extend spark.sql.broadcastTimeout only when a safe build is known to complete within the new window.",
+          "verify": "Verify completion time and build size over representative runs, not just a successful small test."
+        }
+      ],
+      "reproduce": "Run the same small equi-join with and without an explicit broadcast hint. Inspect the exchange build side, timing and output. Use event logs to compare with the large failing case."
+    },
+    {
+      "id": "broadcast-despite-disable",
+      "kind": "symptom",
+      "branch": "performance/sql",
+      "title": "Broadcast appears despite disabling the automatic threshold",
+      "aliases": [
+        "BroadcastNestedLoopJoin",
+        "autoBroadcastJoinThreshold=-1",
+        "unexpected BroadcastExchange"
+      ],
+      "upstream": [
+        "broadcast-with-disable",
+        "big-broadcast-join"
+      ],
+      "primary": [
+        "https://spark.apache.org/docs/latest/sql-performance-tuning.html",
+        "https://spark.apache.org/docs/latest/sql-error-conditions.html"
+      ],
+      "related": [
+        "broadcast-size",
+        "case-09"
+      ],
+      "cases": [
+        "09"
+      ],
+      "scope": "Disabling automatic size-based broadcast does not prohibit all join strategies, hints, or adaptive decisions.",
+      "checks": [
+        {
+          "question": "Does the final plan show a broadcast hint or a different adaptive threshold?",
+          "inspect": "Inspect both initial and final plans, join keys, build side and effective session settings. Separate broadcast hash from broadcast nested loop.",
+          "action": "Remove inappropriate hints and review the adaptive threshold for this query. Confirm an alternate strategy is supported by the join type.",
+          "verify": "Compare final physical operator, match counts and unmatched rows."
+        },
+        {
+          "question": "Is a non-equi or null-aware anti-join involved?",
+          "inspect": "Inspect NOT IN and nullability on both sides. Check whether another algorithm preserves the exact SQL semantics.",
+          "action": "Rewrite only after testing empty inputs, NULLs and duplicate keys. NOT EXISTS or a left join is not generally equivalent to NOT IN.",
+          "verify": "Compare original and revised results on the null/empty fixtures and validate the physical plan."
+        }
+      ],
+      "reproduce": "Use a tiny left/right SQL fixture, including a NULL on the right, and inspect the final plan with the automatic threshold disabled. Compare NOT IN with any proposed rewrite and record differing rows."
+    },
+    {
+      "id": "range-sample",
+      "kind": "error",
+      "branch": "execution/driver",
+      "title": "Driver result limit during range partition sampling",
+      "aliases": [
+        "RangePartitioner",
+        "rangeExchange.sampleSizePerPartition",
+        "range partition sampling",
+        "result size during sort"
+      ],
+      "upstream": [
+        "driver-max-result-size",
+        "error-driver-max-result-size"
+      ],
+      "primary": [
+        "https://spark.apache.org/docs/latest/configuration.html",
+        "https://spark.apache.org/docs/latest/sql-performance-tuning.html"
+      ],
+      "related": [
+        "case-17",
+        "driver-heap",
+        "scan-layout"
+      ],
+      "cases": [
+        "17",
+        "30"
+      ],
+      "scope": "A distributed sort can return sample keys to the driver even without a user collect().",
+      "checks": [
+        {
+          "question": "Is the failed driver-side job collecting samples for a range exchange?",
+          "inspect": "Check the SQL plan for range partitioning and match the failed job to the sorting stage. Compare key width and number of input partitions.",
+          "action": "Remove an unneeded global sort, narrow the sort keys if semantics allow, or reduce excessive upstream input fragmentation.",
+          "verify": "Verify ordering requirements and compare driver sample volume on the same input."
+        },
+        {
+          "question": "Is sampling still too expensive with necessary sort keys?",
+          "inspect": "Inspect the effective spark.sql.execution.rangeExchange.sampleSizePerPartition. Lower sampling may make boundaries less balanced.",
+          "action": "Evaluate a smaller sample in isolation rather than disabling the driver result guard. Retain enough samples to avoid severe reducer imbalance.",
+          "verify": "Check max/median downstream partition sizes, ordered output and driver memory together."
+        }
+      ],
+      "reproduce": "Compare sorting narrow and deliberately wider keys on the same small multi-partition fixture. Inspect the sampling job, returned sample bytes and downstream imbalance while keeping output ordering requirements fixed."
+    },
+    {
+      "id": "jvm-linkage",
+      "kind": "error",
+      "branch": "launch/submission",
+      "title": "Missing JVM class or incompatible method at runtime",
+      "aliases": [
+        "ClassNotFoundException",
+        "NoClassDefFoundError",
+        "NoSuchMethodError",
+        "AbstractMethodError",
+        "LinkageError"
+      ],
+      "upstream": [
+        "class-or-method-not-found"
+      ],
+      "primary": [
+        "https://spark.apache.org/docs/latest/running-on-yarn.html",
+        "https://spark.apache.org/docs/latest/configuration.html"
+      ],
+      "related": [
+        "large-jar",
+        "case-23"
+      ],
+      "cases": [
+        "03",
+        "21"
+      ],
+      "scope": "Identify the failing JVM. A JAR present on the submit host is not proof it is available on an executor.",
+      "checks": [
+        {
+          "question": "Is the named class missing from the classpath of the process that throws?",
+          "inspect": "Check the root cause, runtime classpath, artifact contents, Scala binary version, and localized resources. NoClassDefFoundError can also follow a failed class initializer.",
+          "action": "Supply the compatible dependency to the affected processes; fix the initializer if a previous exception explains the failure.",
+          "verify": "Load the class and exercise its actual call on driver and executor in a small job."
+        },
+        {
+          "question": "Is the class present but a method signature is missing?",
+          "inspect": "Compare compile-time and runtime dependency versions and the JAR actually selected by the class loader. Inspect conflicting transitive artifacts.",
+          "action": "Align versions with the cluster, exclude duplicates, or carefully relocate a private dependency. Avoid globally reversing classpath order as a first fix.",
+          "verify": "Repeat the exact method invocation on the original runtime and check there is one intended dependency path."
+        }
+      ],
+      "reproduce": "Run a minimal call to the affected class on the driver and in one executor task using the production artifact set in a private test application. Record the JAR origin and exact method signature."
+    },
+    {
+      "id": "large-jar",
+      "kind": "symptom",
+      "branch": "launch/submission",
+      "title": "An oversized application JAR slows every launch",
+      "aliases": [
+        "fat jar",
+        "uber jar",
+        "large application jar",
+        "slow jar staging"
+      ],
+      "upstream": [
+        "toolargejar"
+      ],
+      "primary": [
+        "https://spark.apache.org/docs/latest/running-on-yarn.html"
+      ],
+      "related": [
+        "case-21",
+        "jvm-linkage"
+      ],
+      "cases": [
+        "21"
+      ],
+      "scope": "Distinguish the user application JAR from Spark staging its entire distribution.",
+      "checks": [
+        {
+          "question": "Does staging time and uploaded size track the user artifact?",
+          "inspect": "Measure before and after submission and list the largest entries in the built artifact. Check whether Spark/Hadoop or entire unrelated services are bundled.",
+          "action": "Use provided dependencies for compatible cluster libraries; replace oversized client dependencies with the specific API needed. Preserve required runtime classes.",
+          "verify": "Compare artifact size, submit-to-AM time, and a worker-side dependency smoke test."
+        },
+        {
+          "question": "Is the large transferred object actually Spark's library ZIP?",
+          "inspect": "Check the fallback staging warning and the name of the resource in the launch context.",
+          "action": "Follow case 21 and distribute a compatible reusable Spark archive rather than deleting classes from the application.",
+          "verify": "Confirm the expected archive is reused and the resulting classpath still works."
+        }
+      ],
+      "reproduce": "Build two artifacts from the same application, one with cluster-provided libraries excluded. Compare archive contents, staging time and a worker-side call that exercises dependencies."
+    },
+    {
+      "id": "shuffle-meta",
+      "kind": "error",
+      "branch": "execution/shuffle",
+      "title": "No map-output location for a shuffle partition",
+      "aliases": [
+        "MetadataFetchFailedException",
+        "Missing an output location for shuffle",
+        "missing map output status"
+      ],
+      "upstream": [
+        "error-shuffle",
+        "shuffle_exchange_loses_exec_reg"
+      ],
+      "primary": [
+        "https://spark.apache.org/docs/latest/configuration.html",
+        "https://spark.apache.org/docs/latest/running-on-yarn.html"
+      ],
+      "related": [
+        "case-11",
+        "node-loss",
+        "shuffle-registration"
+      ],
+      "cases": [
+        "11",
+        "15"
+      ],
+      "scope": "Failure to obtain location metadata precedes opening a network stream to a block server.",
+      "checks": [
+        {
+          "question": "Did a producer executor or node disappear before the reducer requested the map status?",
+          "inspect": "Match shuffle ID and map index against driver stage attempts, YARN container reports and producer logs. Look for an earlier OOM or disk failure.",
+          "action": "Treat the earliest producer loss, then allow Spark to regenerate missing map outputs subject to the stage budget; do not just retry stale addresses.",
+          "verify": "Check for a fresh successful map attempt, new location metadata, and a succeeding consumer."
+        },
+        {
+          "question": "Are producers alive but a serving service or registration changed?",
+          "inspect": "Compare old and new serving address/port and service restart time. A lookup failure is not proof of network saturation.",
+          "action": "Follow the shuffle-registration investigation if a restarted service lost mappings. Otherwise inspect driver map-output invalidation and prior failed stages.",
+          "verify": "Verify consumers can resolve *and* read the new output on the same shuffle."
+        }
+      ],
+      "reproduce": "Use the DAGSchedulerSuite fetch-failure fixture linked in case 11. Compare an unavailable map location with a failure opening a known location; note which operation happened first."
+    },
+    {
+      "id": "shuffle-network",
+      "kind": "error",
+      "branch": "execution/shuffle",
+      "title": "Shuffle connection fails or times out",
+      "aliases": [
+        "FetchFailedException: Failed to connect",
+        "Connection refused",
+        "Connection reset",
+        "connection timed out",
+        "shuffle fetch timeout",
+        "closed channel"
+      ],
+      "upstream": [
+        "error-shuffle"
+      ],
+      "primary": [
+        "https://spark.apache.org/docs/latest/configuration.html",
+        "https://spark.apache.org/docs/latest/running-on-yarn.html"
+      ],
+      "related": [
+        "shuffle-meta",
+        "shuffle-frame",
+        "case-14",
+        "node-loss"
+      ],
+      "cases": [
+        "11",
+        "14"
+      ],
+      "scope": "Identify the remote serving port in the fetch error. Reaching the web UI or driver RPC endpoint does not test the shuffle path.",
+      "checks": [
+        {
+          "question": "Do repeated failures point at one serving host or dead executor?",
+          "inspect": "Compare the serving BlockManagerId (not just the reducer host), port, container timeline and service health. Separate refused connections from time spent transferring bytes.",
+          "action": "Fix the endpoint or have the cluster owner repair the affected service/node. Recompute missing outputs when the original location is no longer valid.",
+          "verify": "Verify successful block reads from the intended service or a regenerated output, not just TCP connectivity."
+        },
+        {
+          "question": "Do many healthy hosts slow down only during high concurrent fetch load?",
+          "inspect": "Compare remote bytes, fetch wait, disk throughput and service load over the failing window; distinguish a single huge block.",
+          "action": "Bound fetch concurrency or rebalance measured partition sizes; consider network timeout/retry changes only for demonstrated transient stalls.",
+          "verify": "Compare fetch wait and retry rate under equivalent load while checking stage duration and total output."
+        }
+      ],
+      "reproduce": "Correlate one saved failed fetch and a successful fetch for the same shuffle with the actual serving address, bytes and wait time. Use a healthy scratch shuffle as a control; do not interrupt networking."
+    },
+    {
+      "id": "shuffle-checksum",
+      "kind": "error",
+      "branch": "execution/shuffle",
+      "title": "Shuffle block is corrupted",
+      "aliases": [
+        "is corrupted but the cause is unknown",
+        "corrupt shuffle block",
+        "checksum mismatch",
+        "shuffle checksum"
+      ],
+      "upstream": [
+        "shuffle_fetch_corrupted",
+        "error-shuffle"
+      ],
+      "primary": [
+        "https://spark.apache.org/docs/latest/configuration.html",
+        "https://spark.apache.org/docs/latest/running-on-yarn.html"
+      ],
+      "related": [
+        "shuffle-network",
+        "node-loss",
+        "case-11"
+      ],
+      "cases": [
+        "11"
+      ],
+      "scope": "Checksum or decompression failure is evidence about bytes, not proof a particular disk is defective.",
+      "checks": [
+        {
+          "question": "Do corrupt blocks from different reducers share a serving host or disk?",
+          "inspect": "Group failures by serving host, shuffle ID and map output. Compare worker disk alerts, checksum diagnostics, and whether recomputed output elsewhere reads successfully.",
+          "action": "Preserve diagnostics; ask the operator to investigate or isolate that host under cluster policy. Regenerate affected outputs rather than reusing the corrupt file.",
+          "verify": "Read regenerated blocks on a healthy path and verify the same workload no longer produces checksum failures."
+        },
+        {
+          "question": "Do failures persist on different hosts for the same records?",
+          "inspect": "Check whether decoding is failing on source files or on the shuffle stream. Compare producer output, codec/version and first offending input.",
+          "action": "Investigate the input or producer deterministically on a small fixture. Do not disable corruption detection simply to obtain a green stage.",
+          "verify": "Verify successful decoding and equal aggregate checks on the original input snapshot."
+        }
+      ],
+      "reproduce": "Compare recorded corrupt-block diagnostics by source host and block ID with a clean rerun of the same input. Do not change checksums or modify shuffle files on a live cluster."
+    },
+    {
+      "id": "shuffle-registration",
+      "kind": "error",
+      "branch": "execution/shuffle",
+      "title": "External shuffle service lost executor registrations",
+      "aliases": [
+        "Executor is not registered",
+        "not registered with the external shuffle service",
+        "shuffle service restarted",
+        "unRegisterOutputOnHost"
+      ],
+      "upstream": [
+        "shuffle_exchange_loses_exec_reg",
+        "error-shuffle"
+      ],
+      "primary": [
+        "https://spark.apache.org/docs/latest/running-on-yarn.html",
+        "https://spark.apache.org/docs/latest/configuration.html",
+        "https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/internal/config/package.scala#L1111-L1123"
+      ],
+      "related": [
+        "shuffle-meta",
+        "node-loss"
+      ],
+      "cases": [
+        "11",
+        "15"
+      ],
+      "scope": "A service process can be reachable after restart while its per-executor registrations are missing. This case is version/configuration dependent.",
+      "checks": [
+        {
+          "question": "Did the external shuffle service restart on the common serving node?",
+          "inspect": "Correlate NM/service logs with unknown executor IDs and old map locations. Confirm external shuffle service is actually enabled.",
+          "action": "Repair service registration/recovery for the deployed Hadoop/Spark versions. Review the documented host-output invalidation option with the cluster operator, not as a blanket tuning change.",
+          "verify": "Verify new executor registration, invalidation/recomputation of unusable outputs, and actual reducer reads after a controlled restart."
+        },
+        {
+          "question": "Is the service healthy but output files are absent?",
+          "inspect": "Check local directory retention and node loss rather than assuming a registration bug.",
+          "action": "Follow missing map output or producer failure. Increasing fetch retries does not restore deleted files.",
+          "verify": "Verify the map stage supplies a new readable location."
+        }
+      ],
+      "reproduce": "Compare one service restart timeline with its registration logs, executor IDs and subsequent fetch attempts. Use an operator-approved service recovery fixture when a restart test is necessary."
+    },
+    {
+      "id": "shuffle-frame",
+      "kind": "error",
+      "branch": "execution/shuffle",
+      "title": "Shuffle transfer reports a frame or buffer size limit",
+      "aliases": [
+        "Too large frame",
+        "frame size exceeding",
+        "Integer.MAX_VALUE",
+        "shuffle block too large"
+      ],
+      "upstream": [
+        "error-shuffle",
+        "failure-executor-large-record"
+      ],
+      "primary": [
+        "https://spark.apache.org/docs/latest/configuration.html",
+        "https://spark.apache.org/docs/latest/tuning.html"
+      ],
+      "related": [
+        "large-row",
+        "key-skew",
+        "shuffle-network"
+      ],
+      "cases": [
+        "10",
+        "11"
+      ],
+      "scope": "Do not infer a universal 2 GiB file limit. The transport, protocol, block representation and Spark version matter.",
+      "checks": [
+        {
+          "question": "Is the failing message on the data-transfer connection with an exceptionally large block?",
+          "inspect": "Read block IDs, sizes and serving address; compare max/median shuffle read and the distribution of keys. Exclude an incorrect service or port.",
+          "action": "Reduce individual shuffle-block size with suitable upstream partitioning; for a dominant key, change the aggregation or split it correctly rather than adding partitions blindly.",
+          "verify": "Check the largest blocks, retries and result equivalence, not just the total number of shuffle partitions."
+        },
+        {
+          "question": "Is the error from an encoder building one row or from a misdirected connection?",
+          "inspect": "Inspect the first stack frame and whether the peer really speaks Spark block transfer.",
+          "action": "For BufferHolder use the single-record investigation; for a wrong service address fix the endpoint configuration. Do not raise unrelated RPC task limits.",
+          "verify": "Verify a known small block crosses the same path and the original failing input is readable."
+        }
+      ],
+      "reproduce": "From a failed event log, compare the oversized transfer with the distribution of other blocks. Use a smaller sample with the same skewed key pattern to compare partitioning strategies."
+    },
+    {
+      "id": "node-loss",
+      "kind": "error",
+      "branch": "execution/executor",
+      "title": "Multiple executors disappear from one YARN node",
+      "aliases": [
+        "Node lost",
+        "node marked unhealthy",
+        "DISKS_FAILED",
+        "ExecutorLostFailure",
+        "lost node"
+      ],
+      "upstream": [
+        "error-shuffle",
+        "slow-executor"
+      ],
+      "primary": [
+        "https://spark.apache.org/docs/latest/running-on-yarn.html",
+        "https://spark.apache.org/docs/latest/web-ui.html"
+      ],
+      "related": [
+        "case-14",
+        "case-15",
+        "disk-full",
+        "case-11"
+      ],
+      "cases": [
+        "14",
+        "15",
+        "20"
+      ],
+      "scope": "Separate a failed worker host from one executor preemption, one missing heartbeat, or an application-wide AM loss.",
+      "checks": [
+        {
+          "question": "Do multiple containers or applications on the same host share the loss timestamp?",
+          "inspect": "Match NM health and disk diagnostics with container IDs in YARN and Spark. Distinguish serving host from fetching host.",
+          "action": "Have the operator restore or drain the node as appropriate. Allow Spark to replace executors and rebuild only missing shuffle output.",
+          "verify": "Verify healthy NM reports, registered replacement executors and successful reads from replacement producers."
+        },
+        {
+          "question": "Did only one container die while the NM remained healthy?",
+          "inspect": "Read its exit reason and earliest stderr; a host name in a FetchFailed message is not proof of node loss.",
+          "action": "Follow container memory, preemption or heartbeat expiry as supported by diagnostics.",
+          "verify": "Confirm a replacement on a healthy host completes the original partition."
+        }
+      ],
+      "reproduce": "Replay a saved NM-unhealthy or lost-node event. List every lost container on that host in the same time window and compare an unaffected host. No node shutdown is needed."
+    },
+    {
+      "id": "sql-analysis",
+      "kind": "error",
+      "branch": "execution/analysis",
+      "title": "SQL AnalysisException: identify the rejected expression",
+      "aliases": [
+        "AnalysisException",
+        "UNRESOLVED_COLUMN",
+        "AMBIGUOUS_REFERENCE",
+        "TABLE_OR_VIEW_NOT_FOUND",
+        "UNRESOLVED_COLUMN.WITH_SUGGESTION"
+      ],
+      "upstream": [
+        "error-sql-analysis",
+        "error-job"
+      ],
+      "primary": [
+        "https://spark.apache.org/docs/latest/sql-error-conditions.html",
+        "https://spark.apache.org/docs/latest/sql-performance-tuning.html"
+      ],
+      "related": [
+        "sql-correlation",
+        "wrong-format"
+      ],
+      "cases": [
+        "35",
+        "36"
+      ],
+      "scope": "Analysis can fail on the driver before any executor tasks start. Prefer the structured error condition over the wrapper class.",
+      "checks": [
+        {
+          "question": "Does the error name an unresolved or ambiguous column?",
+          "inspect": "Inspect the analyzed input schemas, alias scope, capitalization/resolver settings and columns introduced by a join. Use the identifier in the exception.",
+          "action": "Select or qualify the intended column with a relation alias; avoid renaming away distinct columns without checking their meaning.",
+          "verify": "Analyze the query and run a tiny fixture with both sides populated to validate the projected columns."
+        },
+        {
+          "question": "Does the error name a missing relation or an unsupported subquery instead?",
+          "inspect": "Check active catalog/schema and temporary-view session; for correlated references inspect the subquery condition and outer column.",
+          "action": "Qualify/register the relation in the correct session or follow the correlated-subquery investigation. Formatting SQL can clarify scope but cannot fix a rejected semantic rule.",
+          "verify": "Verify the analyzed plan resolves the intended table and check null/no-match behavior."
+        }
+      ],
+      "reproduce": "Use two tiny DataFrames with the same column name, join them and select an unqualified ambiguous column. Compare with a qualified projection; inspect the condition rather than assuming every AnalysisException has this cause."
+    },
+    {
+      "id": "sql-correlation",
+      "kind": "error",
+      "branch": "execution/analysis",
+      "title": "Correlated predicate rejected during analysis",
+      "aliases": [
+        "CORRELATED_COLUMN_IS_NOT_ALLOWED_IN_PREDICATE",
+        "Correlated column is not allowed in predicate",
+        "UNSUPPORTED_SUBQUERY_EXPRESSION_CATEGORY"
+      ],
+      "upstream": [
+        "correlated-column-not-allowed",
+        "error-sql-analysis"
+      ],
+      "primary": [
+        "https://spark.apache.org/docs/latest/sql-error-conditions.html",
+        "https://spark.apache.org/docs/latest/sql-performance-tuning.html",
+        "https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/common/utils/src/main/resources/error/error-conditions.json#L10348-L10364"
+      ],
+      "related": [
+        "sql-analysis",
+        "broadcast-despite-disable"
+      ],
+      "cases": [
+        "35"
+      ],
+      "scope": "Support depends on the Spark version, predicate shape and aggregation. A rewrite must preserve outer-row multiplicity and empty-input semantics.",
+      "checks": [
+        {
+          "question": "Is an outer reference inside an unsupported correlated aggregate predicate?",
+          "inspect": "Identify inner/outer attributes in the analyzed-query error and the expression that joins them. Check the error subclass for the deployed version.",
+          "action": "Where equivalent, compute inner aggregates on suitable keys then join them back to outer rows. Preserve unmatched outer rows and COUNT-on-empty semantics explicitly.",
+          "verify": "Test no match, one match, duplicates and NULL keys; compare with a trusted reference result."
+        },
+        {
+          "question": "Does the same query fail as an ordinary name-resolution issue without correlation?",
+          "inspect": "Check the actual identifier and aliases in a minimal query before restructuring the join.",
+          "action": "Resolve the names and scopes first; do not rewrite a valid scalar query based only on the AnalysisException superclass.",
+          "verify": "Verify analysis completes and the minimal query returns the expected cardinality."
+        }
+      ],
+      "reproduce": "Reduce the actual failing query to two small relations containing unmatched rows, duplicates and NULLs. Compare the relevant correlated query or trusted reference with the proposed aggregate/join rewrite on your Spark version."
+    },
+    {
+      "id": "wrong-format",
+      "kind": "error",
+      "branch": "data/files",
+      "title": "Parquet reader opened a non-Parquet file or wrong table",
+      "aliases": [
+        "not a Parquet file",
+        "not a Parquet file. Expected magic number",
+        "Expected magic number at tail",
+        "CANNOT_READ_FILE_FOOTER"
+      ],
+      "upstream": [
+        "failed-to-read-non-parquet-file",
+        "error-invalid-file",
+        "error-other"
+      ],
+      "primary": [
+        "https://spark.apache.org/docs/latest/sql-data-sources-parquet.html",
+        "https://spark.apache.org/docs/latest/sql-error-conditions.html"
+      ],
+      "related": [
+        "damaged-input",
+        "case-36",
+        "case-37"
+      ],
+      "cases": [
+        "36",
+        "37"
+      ],
+      "scope": "A filename suffix or table declaration is not proof of the bytes on disk. Do not switch metastores without checking the table identity.",
+      "checks": [
+        {
+          "question": "Does the exact reported path contain a different format or unexpected side file?",
+          "inspect": "Use a trusted file inspector on a copy; check the file footer and producer metadata. Compare a known-good Parquet file and the table location.",
+          "action": "Correct the reader, table location or upstream format. Place ancillary files outside the dataset according to the table contract.",
+          "verify": "Read the repaired table from a fresh session and reconcile the expected paths, row count and values."
+        },
+        {
+          "question": "Is the format right but the file truncated or the catalog points at the wrong snapshot?",
+          "inspect": "Compare file length, producer commit evidence and catalog snapshot. Distinguish decoding errors from a missing file.",
+          "action": "Restore an intact version or republish using appropriate commit semantics; do not delete catalog metadata indiscriminately.",
+          "verify": "Verify the complete snapshot reads a data column and downstream totals match."
+        }
+      ],
+      "reproduce": "Write a small text file to an isolated path and deliberately read that scratch path as Parquet; contrast with a known-good Parquet file. Compare magic/footer diagnostics with a valid file of incompatible schema."
+    },
+    {
+      "id": "damaged-input",
+      "kind": "error",
+      "branch": "data/files",
+      "title": "File decoder reads past a page or stream",
+      "aliases": [
+        "Reading past RLE/BitPacking stream",
+        "ParquetDecodingException",
+        "EOFException",
+        "unexpected end of stream"
+      ],
+      "upstream": [
+        "error-invalid-file",
+        "failed-to-read-non-parquet-file"
+      ],
+      "primary": [
+        "https://spark.apache.org/docs/latest/sql-data-sources-parquet.html",
+        "https://spark.apache.org/docs/latest/configuration.html"
+      ],
+      "related": [
+        "wrong-format",
+        "case-36",
+        "shuffle-checksum"
+      ],
+      "cases": [
+        "36",
+        "37"
+      ],
+      "scope": "An EOF in a stored data file is not automatically a corrupt shuffle block or a type mismatch.",
+      "checks": [
+        {
+          "question": "Does decoding fail at the same file and column across different executors?",
+          "inspect": "Read that file alone with its native schema and a selected column. Check size, checksum if available, producer version and a known-good fixture.",
+          "action": "Restore or regenerate the file from the source into a new snapshot. Align writer/reader versions when a minimal valid file demonstrates a compatibility issue.",
+          "verify": "Reconcile values and counts for that file and the full repaired snapshot, not just footer readability."
+        },
+        {
+          "question": "Does the failure move between paths or coincide with overwrite/publication?",
+          "inspect": "Check listing and read timestamps against writers, and compare with the snapshot's file manifest.",
+          "action": "Use immutable or transactional publication, then retry against a stable version. Only skip corruption if partial results are part of an explicit policy.",
+          "verify": "Verify that repeated reads of the same snapshot agree and account for every expected file."
+        }
+      ],
+      "reproduce": "Use an already quarantined file or a test fixture and its known-good original. Read the offending column explicitly and compare footer, length and failure location; do not alter production files."
+    },
+    {
+      "id": "capacity-wait",
+      "kind": "symptom",
+      "branch": "launch/capacity",
+      "title": "Tasks wait but the cluster does not deliver more slots",
+      "aliases": [
+        "Initial job has not accepted any resources",
+        "pending containers",
+        "not enough executors",
+        "slow cluster"
+      ],
+      "upstream": [
+        "notenoughexecs",
+        "slow-job-slow-cluster",
+        "slow-job"
+      ],
+      "primary": [
+        "https://spark.apache.org/docs/latest/running-on-yarn.html",
+        "https://spark.apache.org/docs/latest/web-ui.html"
+      ],
+      "related": [
+        "case-01",
+        "case-03",
+        "case-05",
+        "case-30"
+      ],
+      "cases": [
+        "01",
+        "03",
+        "05"
+      ],
+      "scope": "Separate target demand, RM grants, successful JVM launch, and executor registration.",
+      "checks": [
+        {
+          "question": "Are eligible container requests pending in the YARN queue?",
+          "inspect": "Compare driver target, AM pending requests, queue capacity, node labels and resource dimensions. Queue wait can occur before any executor log exists.",
+          "action": "Meet the queue/resource constraints or arrange capacity with its owner. Raising the dynamic-allocation maximum is not a remedy for no grants.",
+          "verify": "Verify grants become registered executors and runnable tasks begin."
+        },
+        {
+          "question": "Are containers granted but Spark shows no ready executors?",
+          "inspect": "Inspect bootstrap logs and advertised driver address; if executors are idle, count runnable partitions instead.",
+          "action": "Use executor-registration diagnostics for failed bootstrap or narrow-stage diagnostics for insufficient runnable work.",
+          "verify": "Compare pending tasks, registered slots and active cores on the same timeline."
+        }
+      ],
+      "reproduce": "Compare the time series of target, requested, allocated, registered and busy executors in one waiting run. Contrast with a bounded job that has adequate queue resources and enough runnable tasks."
+    },
+    {
+      "id": "lineage",
+      "kind": "symptom",
+      "branch": "performance/work",
+      "title": "Iterative application accumulates a long lineage or SQL plan",
+      "aliases": [
+        "large DAG",
+        "iterative job slower each iteration",
+        "long lineage",
+        "deep logical plan"
+      ],
+      "upstream": [
+        "toobigdag",
+        "error-driver-stack-overflow",
+        "error-executor-out-of-disk"
+      ],
+      "primary": [
+        "https://spark.apache.org/docs/latest/tuning.html",
+        "https://spark.apache.org/docs/latest/sql-performance-tuning.html"
+      ],
+      "related": [
+        "driver-stack",
+        "driver-heap",
+        "case-31"
+      ],
+      "cases": [
+        "07",
+        "31"
+      ],
+      "scope": "Caching work is not the same as cutting dependencies; a growing plan is one hypothesis, not a diagnosis from DAG size alone.",
+      "checks": [
+        {
+          "question": "Does planning time, lineage depth or retained shuffle state grow with iteration number?",
+          "inspect": "Compare equivalent iterations, input size, retained references and driver profiles. Exclude growing data volume as the simpler explanation.",
+          "action": "Periodically materialize a reliable checkpoint or explicitly write/read a correct intermediate; release obsolete caches and references.",
+          "verify": "Prove lineage is truncated after materialization, later iterations stabilize, and the algorithm returns the same result."
+        },
+        {
+          "question": "Does time instead grow after task launch with unchanged plan depth?",
+          "inspect": "Compare per-iteration input sizes, spill and hot keys in the Stages UI.",
+          "action": "Investigate skew or disk pressure rather than checkpointing every iteration. Checkpoint I/O itself has a cost.",
+          "verify": "Verify the dominant stage metric improves over multiple iterations."
+        }
+      ],
+      "reproduce": "Run a bounded iterative RDD example with and without a periodic reliable checkpoint. Compare dependency depth and iteration time after materialization; check identical results."
+    },
+    {
+      "id": "key-skew",
+      "kind": "symptom",
+      "branch": "performance/shape",
+      "title": "One key dominates shuffle or group work",
+      "aliases": [
+        "key skew",
+        "hot key",
+        "skewed aggregation",
+        "skewed shuffle tasks"
+      ],
+      "upstream": [
+        "key-skew",
+        "slow-skewed-join",
+        "slow-reduce",
+        "revise-bad_partitioning"
+      ],
+      "primary": [
+        "https://spark.apache.org/docs/latest/sql-performance-tuning.html",
+        "https://spark.apache.org/docs/latest/tuning.html"
+      ],
+      "related": [
+        "case-10",
+        "case-29",
+        "python-memory",
+        "slow-host"
+      ],
+      "cases": [
+        "10",
+        "29"
+      ],
+      "scope": "Long duration alone is not evidence of skew. Check bytes, records and key frequency together.",
+      "checks": [
+        {
+          "question": "Does the long tail follow a key or partition across different hosts?",
+          "inspect": "Compare max/median records and bytes and a bounded key-frequency profile. Check whether a single group must fit together.",
+          "action": "Use partial aggregation where valid; isolate verified hot keys or use an eligible AQE skew join. Salting requires a correct second combine or join-side replication.",
+          "verify": "Verify result multiplicity and per-key totals plus a smaller slowest task, accounting for extra shuffle reads."
+        },
+        {
+          "question": "Are byte counts comparable and only one host is persistently slow?",
+          "inspect": "Compare several partitions on that host and a matched task elsewhere; inspect GC, I/O and CPU stalls.",
+          "action": "Use slow-host diagnostics. Do not salt keys or change exact aggregations based on duration alone.",
+          "verify": "Re-run on comparable resources and confirm the slowdown follows or no longer follows the host."
+        }
+      ],
+      "reproduce": "Profile a small dataset with one frequent key and many rare keys. Compare task-size distribution and per-key totals before and after an eligible partial aggregation or AQE join."
+    },
+    {
+      "id": "shuffle-width",
+      "kind": "symptom",
+      "branch": "performance/shape",
+      "title": "Shuffle parallelism does not match the work",
+      "aliases": [
+        "too many shuffle tasks",
+        "too few shuffle tasks",
+        "uniform slow reducers",
+        "tiny tasks",
+        "too many tasks",
+        "too few tasks"
+      ],
+      "upstream": [
+        "slow-reduce",
+        "toofew_tasks",
+        "toomany_tasks",
+        "even_partitioning_still_slow",
+        "revise-even_partitioning_still_slow",
+        "revise-bad_partitioning"
+      ],
+      "primary": [
+        "https://spark.apache.org/docs/latest/sql-performance-tuning.html",
+        "https://spark.apache.org/docs/latest/tuning.html",
+        "https://spark.apache.org/docs/latest/web-ui.html"
+      ],
+      "related": [
+        "case-34",
+        "case-32",
+        "key-skew",
+        "case-30"
+      ],
+      "cases": [
+        "28",
+        "30",
+        "32",
+        "34"
+      ],
+      "scope": "Initial shuffle buckets, final AQE reader tasks, and YARN container counts are separate controls.",
+      "checks": [
+        {
+          "question": "Are most reducers uniformly large and long-running, with idle slots available?",
+          "inspect": "Compare partition bytes/durations and actual allocated slots. Exclude one hot key and operators that require a single partition.",
+          "action": "Increase applicable shuffle parallelism before that exchange, or improve input layout. Do not use queue changes to split a deterministic single-partition operator.",
+          "verify": "Compare peak partition size, spill and stage duration at equivalent input size."
+        },
+        {
+          "question": "Are most tasks tiny compared with scheduling and fetch overhead?",
+          "inspect": "Check scheduler delay, bytes per task, CPU use, and the final adaptive plan. A large number of buckets need not imply that many reader tasks.",
+          "action": "Enable or tune eligible AQE coalescing, or reduce excessive initial partition counts. Preserve required distribution and adequate concurrency.",
+          "verify": "Verify less scheduling overhead without creating a small set of large stragglers."
+        }
+      ],
+      "reproduce": "Run a bounded groupBy with the same input at two sensible initial shuffle counts. Compare final AQE reader partitions, peak task size and scheduling overhead; keep executor capacity constant."
+    },
+    {
+      "id": "slow-host",
+      "kind": "symptom",
+      "branch": "performance/shape",
+      "title": "One executor is slow on otherwise comparable tasks",
+      "aliases": [
+        "slow executor",
+        "slow host",
+        "straggler",
+        "same partition fast on another host"
+      ],
+      "upstream": [
+        "slow-executor",
+        "even_partitioning_still_slow",
+        "revise-even_partitioning_still_slow"
+      ],
+      "primary": [
+        "https://spark.apache.org/docs/latest/web-ui.html",
+        "https://spark.apache.org/docs/latest/tuning.html"
+      ],
+      "related": [
+        "key-skew",
+        "case-13",
+        "case-14"
+      ],
+      "cases": [
+        "13",
+        "14"
+      ],
+      "scope": "A slow machine and a large partition can look identical until host and partition IDs are separated.",
+      "checks": [
+        {
+          "question": "Are unrelated, similarly sized tasks slow on the same host?",
+          "inspect": "Compare input bytes, shuffle read, GC time, locality, attempt number and duration by executor across stages.",
+          "action": "Investigate that host with the operator for disk/network contention or memory pressure. Speculation can reduce tail latency but duplicates work.",
+          "verify": "Compare matched tasks after remediation and ensure external side effects remain safe for repeated attempts."
+        },
+        {
+          "question": "Does slowness move with one partition rather than one host?",
+          "inspect": "Compare the same partition across attempts and sample data complexity as well as bytes.",
+          "action": "Follow skew, oversized record or CPU-expensive transformation diagnostics; replacing healthy nodes will not fix that input.",
+          "verify": "Verify the partition tail shrinks without altering the output."
+        }
+      ],
+      "reproduce": "Use an event-log comparison, grouping comparable attempts by host and partition. A tail that follows a host suggests a different investigation than one that follows the same partition everywhere."
+    },
+    {
+      "id": "scan-layout",
+      "kind": "symptom",
+      "branch": "performance/read",
+      "title": "Input layout produces too many tiny or too few large scan tasks",
+      "aliases": [
+        "slow map",
+        "unsplittable input",
+        "small file scan",
+        "too many input splits"
+      ],
+      "upstream": [
+        "read-partition-issue",
+        "slow-map",
+        "revise-bad_partitioning"
+      ],
+      "primary": [
+        "https://spark.apache.org/docs/latest/sql-performance-tuning.html",
+        "https://spark.apache.org/docs/latest/sql-data-sources-parquet.html",
+        "https://spark.apache.org/docs/latest/tuning.html"
+      ],
+      "related": [
+        "scan-volume",
+        "key-skew",
+        "small-files"
+      ],
+      "cases": [
+        "30",
+        "35",
+        "40"
+      ],
+      "scope": "Input splits are determined by the data source and file layout before the later shuffle partition setting applies.",
+      "checks": [
+        {
+          "question": "Is planning/listing expensive and are files or read tasks mostly tiny?",
+          "inspect": "Inspect file count/size, listing time, scan partition count, and per-task duration. Account for source-specific open cost and grouping.",
+          "action": "Compact small files through a controlled rewrite or use appropriate source split settings; do not edit table-owned files in place.",
+          "verify": "Verify lower listing/task overhead with the same row and partition totals."
+        },
+        {
+          "question": "Is one large input task reading a non-splittable file or an unusually large record?",
+          "inspect": "Check actual codec, file layout, row groups and input bytes in the first stage. A downstream repartition happens after this read.",
+          "action": "Use a splittable representation or rewrite into appropriately sized files; treat a single excessive row separately.",
+          "verify": "Verify the read stage itself distributes work, not just a subsequent shuffle stage."
+        }
+      ],
+      "reproduce": "Write the same small dataset as many tiny files and as a compact file set in separate scratch paths. Compare planning time, scan tasks and total rows."
+    },
+    {
+      "id": "scan-volume",
+      "kind": "symptom",
+      "branch": "performance/read",
+      "title": "Scan reads more partitions, columns or rows than necessary",
+      "aliases": [
+        "PartitionFilters",
+        "PushedFilters",
+        "ReadSchema",
+        "column pruning",
+        "predicate pushdown"
+      ],
+      "upstream": [
+        "slow-map",
+        "slow-partition_filter_pushdown"
+      ],
+      "primary": [
+        "https://spark.apache.org/docs/latest/sql-performance-tuning.html",
+        "https://spark.apache.org/docs/latest/sql-data-sources-parquet.html"
+      ],
+      "related": [
+        "case-35",
+        "scan-layout",
+        "case-08"
+      ],
+      "cases": [
+        "08",
+        "35"
+      ],
+      "scope": "Partition pruning, column pruning and storage-level predicate pushdown are not interchangeable.",
+      "checks": [
+        {
+          "question": "Are expected partition predicates absent or does the scan open more directories than required?",
+          "inspect": "Use formatted explain and actual file counts; inspect expressions, types, catalog metadata and dynamic pruning eligibility for the deployed version.",
+          "action": "Express the intended partition predicate in a form the source can use. Verify rewrites for nulls and dates before relying on them.",
+          "verify": "Check selected partitions and bytes read; confirm output equivalence."
+        },
+        {
+          "question": "Are directories correct but ReadSchema is wide or data filters run above a UDF?",
+          "inspect": "Compare requested columns, pushed filters and Python evaluation boundaries. Source capabilities may limit pushdown.",
+          "action": "Project only needed columns and apply equivalent native filters before opaque transformations where semantics allow.",
+          "verify": "Compare scan schema, bytes, UDF input rows and output values."
+        }
+      ],
+      "reproduce": "Use a partitioned test table, select only needed columns and compare a partition-key filter with a non-key filter. Inspect actual scan files, read schema and output values."
+    },
+    {
+      "id": "regex-cpu",
+      "kind": "symptom",
+      "branch": "performance/read",
+      "title": "Tasks spend most of their time in regular-expression matching",
+      "aliases": [
+        "regexp_extract",
+        "regexp_replace",
+        "java.util.regex.Pattern",
+        "regex slow"
+      ],
+      "upstream": [
+        "slow-regex-tips",
+        "slow-map"
+      ],
+      "primary": [
+        "https://spark.apache.org/docs/latest/web-ui.html",
+        "https://spark.apache.org/docs/latest/sql-performance-tuning.html"
+      ],
+      "related": [
+        "case-08",
+        "slow-host",
+        "large-row"
+      ],
+      "cases": [
+        "08"
+      ],
+      "scope": "Investigate performance on benign bounded data. A busy task with little I/O is not automatically a regex problem.",
+      "checks": [
+        {
+          "question": "Do executor profiles repeatedly show regex matching on the slow records?",
+          "inspect": "Compare task CPU versus I/O and sample representative input lengths. Check whether the expression is interpreted by SQL, Python or the JVM.",
+          "action": "Replace unnecessary regex work with a literal/string operation or simplify the expression while preserving intended matches. Scope evaluation to the rows/columns that need it.",
+          "verify": "Compare match and nonmatch results, escaping, nulls and runtime across representative bounded inputs."
+        },
+        {
+          "question": "Is apparent slowness actually an unexpected escape or match result?",
+          "inspect": "Compare the string that reaches the regex engine with the intended literal, including the SQL/Python string layer.",
+          "action": "Fix escaping at the relevant layer and add small positive and negative examples; do not assume one number of backslashes suits every interface.",
+          "verify": "Verify outputs explicitly rather than using a count that prunes the expression."
+        }
+      ],
+      "reproduce": "Compare the original transformation against a simpler equivalent expression on bounded representative inputs including nonmatches, NULLs and escaped literals. Verify semantics before interpreting timings."
+    },
+    {
+      "id": "benchmark",
+      "kind": "symptom",
+      "branch": "performance/read",
+      "title": "A benchmark action silently skips the expression under test",
+      "aliases": [
+        "forced computations",
+        "noop write",
+        "count prunes projection",
+        "benchmark too fast"
+      ],
+      "upstream": [
+        "forced-computations",
+        "slow-stage"
+      ],
+      "primary": [
+        "https://spark.apache.org/docs/latest/sql-performance-tuning.html",
+        "https://spark.apache.org/docs/latest/web-ui.html"
+      ],
+      "related": [
+        "scan-volume",
+        "case-08"
+      ],
+      "cases": [
+        "08",
+        "36"
+      ],
+      "scope": "A benchmark that counts rows may never materialize the projected column, UDF or problematic conversion.",
+      "checks": [
+        {
+          "question": "Is the target expression missing from the executed plan?",
+          "inspect": "Compare the optimized/physical plan for count versus an action consuming the target column; keep input and cache state identical.",
+          "action": "Consume a bounded checksum/aggregate over the actual values, or use an appropriate no-op sink for the exact runtime. Separate sink I/O from transformation measurement.",
+          "verify": "Verify the target operator executes, its metrics are nonzero and representative values agree."
+        },
+        {
+          "question": "Do runs differ in warm caches, AQE decisions or cluster allocation?",
+          "inspect": "Compare input versions, final plan and executor resources before calling one implementation faster.",
+          "action": "Use a stable fixture and replicate warmed/cold measurements separately; report what the action measures.",
+          "verify": "Check the distribution across repeated runs rather than one elapsed time."
+        }
+      ],
+      "reproduce": "Create a projected column and compare count() with an aggregation that consumes the projected value. Use the final physical plans to check whether each action executed the expression."
+    },
+    {
+      "id": "stage-regression",
+      "kind": "symptom",
+      "branch": "performance/read",
+      "title": "Find the stage responsible for a slow run",
+      "aliases": [
+        "slow stage",
+        "job slower than baseline",
+        "slow map stage",
+        "slow reduce stage"
+      ],
+      "upstream": [
+        "slow-job",
+        "slow-stage",
+        "slow-map",
+        "slow-reduce",
+        "slow-job-slow-cluster"
+      ],
+      "primary": [
+        "https://spark.apache.org/docs/latest/web-ui.html",
+        "https://spark.apache.org/docs/latest/tuning.html"
+      ],
+      "related": [
+        "capacity-wait",
+        "scan-layout",
+        "shuffle-width",
+        "slow-host"
+      ],
+      "cases": [
+        "05",
+        "10",
+        "32"
+      ],
+      "scope": "Stage IDs can change between applications. Compare operations and data sizes, not raw stage numbers alone.",
+      "checks": [
+        {
+          "question": "Is elapsed time mostly before tasks run or while tasks wait for capacity?",
+          "inspect": "Align submission, AM registration, grants, executor registration and first-task times from both runs.",
+          "action": "Investigate staging or queue wait before tuning SQL operators. Ask for additional resources only if runnable tasks and eligible requests exist.",
+          "verify": "Verify time to first usable slot and pending-task duration improve."
+        },
+        {
+          "question": "Is an equivalent scan, exchange or write stage slower at the same input volume?",
+          "inspect": "Compare final plans, task distributions, GC, spill, shuffle and output metrics. Separate global slowdowns from one outlier.",
+          "action": "Follow the corresponding scan, shuffle, skew or commit investigation. Change one factor at a time on a comparable snapshot.",
+          "verify": "Verify the specific stage and end-to-end runtime improve with the same output."
+        }
+      ],
+      "reproduce": "Open the SQL and Stages views for a known-good and a slow run on equivalent inputs. Match operators, bytes and task distributions before comparing stage duration."
+    },
+    {
+      "id": "small-files",
+      "kind": "symptom",
+      "branch": "data/write",
+      "title": "Write or subsequent scans suffer from too many small files",
+      "aliases": [
+        "small file problem",
+        "many part files",
+        "too many output files"
+      ],
+      "upstream": [
+        "slow-writes-too-many-files",
+        "slow-writes",
+        "read-partition-issue"
+      ],
+      "primary": [
+        "https://spark.apache.org/docs/latest/sql-performance-tuning.html",
+        "https://spark.apache.org/docs/latest/cloud-integration.html"
+      ],
+      "related": [
+        "case-40",
+        "skewed-write",
+        "object-commit"
+      ],
+      "cases": [
+        "30",
+        "39",
+        "40"
+      ],
+      "scope": "Concurrent writer tasks, dynamic partition directories, bucketing and rollover can all multiply file count.",
+      "checks": [
+        {
+          "question": "Does file count track writer tasks times directories visited by each task?",
+          "inspect": "Measure data files per destination partition, size distribution, number of writer tasks and maxRecordsPerFile. Ignore marker files.",
+          "action": "Distribute by an appropriate output key and target file size, or compact using the table format. Avoid globally coalescing to one by default.",
+          "verify": "Compare files per directory, median size, subsequent scan time and full row totals."
+        },
+        {
+          "question": "Does a single successful task create several files with incrementing counters?",
+          "inspect": "Inspect per-file row counts against the configured record cap.",
+          "action": "Follow case 40. Raise the cap only if rollout really is the cause and the resulting file sizes suit readers.",
+          "verify": "Verify fewer files without turning the writer stage into a straggler."
+        }
+      ],
+      "reproduce": "Write identical rows to two fresh paths with different writer parallelism or rollover cap. Count data files and compute size distribution by destination partition."
+    },
+    {
+      "id": "skewed-write",
+      "kind": "symptom",
+      "branch": "data/write",
+      "title": "Some output partitions finish long after all the others",
+      "aliases": [
+        "skewed write",
+        "slow writes",
+        "sort before write",
+        "uneven output file sizes"
+      ],
+      "upstream": [
+        "slow-skewed-write",
+        "slow-writes",
+        "key-skew",
+        "write-fails"
+      ],
+      "primary": [
+        "https://spark.apache.org/docs/latest/sql-performance-tuning.html",
+        "https://spark.apache.org/docs/latest/web-ui.html"
+      ],
+      "related": [
+        "key-skew",
+        "small-files",
+        "object-commit"
+      ],
+      "cases": [
+        "10",
+        "30",
+        "39"
+      ],
+      "scope": "The table partition key and the Spark execution partition are different. Sorting alone does not necessarily rebalance task load.",
+      "checks": [
+        {
+          "question": "Does a late writer handle a disproportionately large date or key?",
+          "inspect": "Compare per-task bytes and the target partition paths, including the final AQE plan and table distribution requirements.",
+          "action": "Use a compatible repartitioning strategy that spreads hot data without breaking the table contract; local sorting changes order, not global balance.",
+          "verify": "Check max/median writer duration, partition directories, file sizes and result counts."
+        },
+        {
+          "question": "Do tasks finish promptly but the driver lingers after the last task?",
+          "inspect": "Inspect driver commit logs and filesystem operations rather than adjusting reducer count.",
+          "action": "Follow object-store commit or job-commit diagnostics; use an appropriate table-aware maintenance strategy for existing small files.",
+          "verify": "Verify publication latency and read-back integrity separately from task runtime."
+        }
+      ],
+      "reproduce": "Write a bounded dataset containing one hot date; compare per-writer bytes and elapsed time with a better balanced, table-compatible distribution, then reconcile all dates."
+    },
+    {
+      "id": "object-commit",
+      "kind": "symptom",
+      "branch": "data/write",
+      "title": "Object-store publication is slow or incomplete",
+      "aliases": [
+        "S3A committer",
+        "rename slow on S3",
+        "FileOutputCommitter",
+        "slow S3 write"
+      ],
+      "upstream": [
+        "slow-writes-s3",
+        "slow-writes",
+        "write-fails"
+      ],
+      "primary": [
+        "https://spark.apache.org/docs/latest/cloud-integration.html",
+        "https://spark.apache.org/docs/latest/configuration.html"
+      ],
+      "related": [
+        "case-18",
+        "small-files",
+        "write-stage"
+      ],
+      "cases": [
+        "18",
+        "39"
+      ],
+      "scope": "S3, Hadoop/S3A, EMRFS and table formats have different commit protocols. Directory rename is not a portable atomic transaction.",
+      "checks": [
+        {
+          "question": "Does time accumulate after tasks finish in copy/rename or job commit?",
+          "inspect": "Identify scheme, connector, committer class, table format and request metrics. Compare task output time with commit time.",
+          "action": "Choose a supported cloud-aware committer or transactional table writer for the deployed stack. Validate overwrite and retry support before switching.",
+          "verify": "Test success, a bounded aborted write and a retry on a private prefix; verify visibility and absence of duplicate results."
+        },
+        {
+          "question": "Is commit fast but there are many tiny uploads or skewed writers?",
+          "inspect": "Compare file count, multipart/upload metrics and per-task duration.",
+          "action": "Follow file-layout or skewed-write diagnostics instead of changing commit semantics unnecessarily.",
+          "verify": "Compare throughput, file sizes and published record count at the same input volume."
+        }
+      ],
+      "reproduce": "Write and read back a tiny fixture in a private object-store prefix with the supported connector/committer. Compare task completion timestamps to final publication; test retry only on scratch output."
+    },
+    {
+      "id": "write-stage",
+      "kind": "error",
+      "branch": "data/write",
+      "title": "Write action fails: locate the first failing boundary",
+      "aliases": [
+        "TASK_WRITE_FAILED",
+        "Job aborted while writing rows",
+        "write failed",
+        "FileAlreadyExistsException",
+        "commit denied"
+      ],
+      "upstream": [
+        "write-fails",
+        "slow-writes"
+      ],
+      "primary": [
+        "https://spark.apache.org/docs/latest/sql-performance-tuning.html",
+        "https://spark.apache.org/docs/latest/cloud-integration.html"
+      ],
+      "related": [
+        "case-18",
+        "case-38",
+        "skewed-write",
+        "wrong-format"
+      ],
+      "cases": [
+        "18",
+        "38",
+        "39"
+      ],
+      "scope": "An exception at save() can originate in upstream computation, task write/commit, or job commit.",
+      "checks": [
+        {
+          "question": "Does the same expression fail before the sink is invoked?",
+          "inspect": "Use a bounded fixture and force materialization of the actual columns; a simple count can avoid the calculation. Check earliest executor error.",
+          "action": "Fix the upstream conversion, UDF or memory issue before tuning the committer. Compare the same input and plan.",
+          "verify": "Verify the projection materializes, then write and read back a new scratch destination."
+        },
+        {
+          "question": "Did task data succeed but publication fail, or did the write never start?",
+          "inspect": "Compare task commit messages and job commit diagnostics with save mode, destination ACLs/quota and table distribution rules.",
+          "action": "Follow job commit for post-task failure or existing-path handling for skipped/rejected insertion. Inspect partial output before retrying.",
+          "verify": "Check committed visible files and expected contents rather than only successful task counters."
+        }
+      ],
+      "reproduce": "Use the V1 failing-job-commit fixture from case 18 to isolate failure after task commits. Contrast with a projection error that fails before the sink gets valid rows."
+    },
+    {
+      "id": "handoff",
+      "kind": "error",
+      "branch": "execution/analysis",
+      "title": "Unknown or wrapped exception: preserve the first cause",
+      "aliases": [
+        "Py4JJavaError",
+        "SparkException: Job aborted",
+        "Job aborted due to stage failure",
+        "unknown error"
+      ],
+      "upstream": [
+        "error-job",
+        "error-other",
+        "slow-job"
+      ],
+      "primary": [
+        "https://spark.apache.org/docs/latest/web-ui.html",
+        "https://spark.apache.org/docs/latest/running-on-yarn.html",
+        "https://spark.apache.org/docs/latest/sql-error-conditions.html"
+      ],
+      "related": [
+        "sql-analysis",
+        "memory-owner",
+        "case-11",
+        "write-stage"
+      ],
+      "cases": [
+        "12",
+        "18"
+      ],
+      "scope": "A top-level SparkException or Py4J wrapper is not a root cause. Keep uncertainty explicit.",
+      "checks": [
+        {
+          "question": "Is there a nested error condition or a task/container diagnostic earlier in time?",
+          "inspect": "Record the application and attempt IDs, SQL execution/stage/task IDs, first cause and which process emitted it. Compare one failing and one successful partition.",
+          "action": "Select the specific error by its class or message. Do not tune heap, increase retries or delete files solely from a wrapper.",
+          "verify": "Confirm the chosen diagnosis predicts the original evidence and a bounded reproduction."
+        },
+        {
+          "question": "Is the first cause missing because the process terminated abruptly?",
+          "inspect": "Inspect YARN attempt/container logs, process exit status, available event logs and node health; redact secrets before sharing anything.",
+          "action": "Escalate to the cluster or data owner with versions, affected scope, timing, sanitized cause chain and a minimal fixture. Do not claim a fix without discriminating evidence.",
+          "verify": "Agree on a test that would separate the leading hypotheses, then repeat after collecting it."
+        }
+      ],
+      "reproduce": "Reduce the incident to one application attempt and the smallest representative input. Record the first nested cause, not just the terminal exception; if logs are missing, document that gap."
+    }
+  ]
+}

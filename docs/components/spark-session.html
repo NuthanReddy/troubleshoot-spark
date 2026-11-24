@@ -1,0 +1,87 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SparkSession: SQL state and the query entry point · Troubleshoot Spark</title><link rel="stylesheet" href="../style.css"><main class="reader"><nav><a href=".././#map">Diagnostic map</a> · <a href="../guide.html">Lifecycle</a> · <a href="../scenarios.html">Cases</a> · <a href="../components/index.html">Components</a></nav><h1 id="sparksession-sql-state-and-the-query-entry-point">SparkSession: SQL state and the query entry point</h1>
+<p><a href="index.html">component index</a></p>
+<p><code>spark</code> in a classic PySpark script is a Python <code>SparkSession</code> with a <a href="py4j-gateway.html">Py4J</a>
+handle, <code>_jsparkSession</code>, to <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/python/pyspark/sql/session.py#L665-L719"><code>org.apache.spark.sql.classic.SparkSession</code></a>.
+It answers <strong>&quot;under which SQL settings, catalog, and functions should this query run?&quot;</strong>
+The <a href="spark-context.html">SparkContext</a> owns the application and scheduling; <a href="spark-env.html">SparkEnv</a>
+holds services in each JVM. Creating another session need not create either of those.
+Both session objects stay on the driver side: in the AM container in YARN cluster mode,
+or on the submit host in client mode. This is not a Connect session.</p>
+<h2 id="flow-at-a-glance">Flow at a glance</h2>
+<ol>
+<li><strong>First session</strong>: Registers a local temporary view named paid_orders.</li>
+<li><strong>Sibling session</strong>: Shares the SparkContext, not the local views.</li>
+<li><strong>Name lookup</strong>: Cannot resolve that local view in the sibling session.</li>
+</ol>
+<blockquote>
+<p><strong>Watch for:</strong> Stopping either session stops their shared SparkContext, even though their local views are separate.</p>
+</blockquote>
+<details>
+<summary>Show the animated flow</summary>
+
+<p><img src="visuals/spark-session.svg" alt="Two sessions share a SparkContext, but the second cannot see the first session's local view"></p>
+</details>
+
+<h2 id="creation-and-state-ownership">Creation and state ownership</h2>
+<ol>
+<li>The Python builder collects key/value options. If no live session exists,
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/python/pyspark/sql/session.py#L575-L588">classic <code>getOrCreate()</code></a> converts the options to a <code>SparkConf</code>, asks
+<code>SparkContext.getOrCreate(conf)</code> for a context, then constructs a session wrapper.
+If a Python session is already live, it returns that session after <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/classic/SparkSession.scala#L1106-L1142">applying modifiable
+settings</a>. It does not restart the context to change its master or driver memory.</li>
+<li>The <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/python/pyspark/sql/session.py#L665-L719">wrapper</a> reuses a non-stopped default JVM session when available, otherwise
+constructs one from <code>self._jsc.sc()</code> and the options. When installing the first live
+Python session it sets the JVM default and active sessions. The JVM distinguishes
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/classic/SparkSession.scala#L1021-L1047">a thread&#39;s active session from the process-wide default</a>.</li>
+<li><a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/python/pyspark/sql/session.py#L737-L757"><code>newSession()</code></a> returns another wrapper with the same <code>SparkContext</code> and a
+new JVM session. Its <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/classic/SparkSession.scala#L263-L272">constructor</a> receives <code>Some(sharedState)</code> but <strong>no
+parent <code>SessionState</code></strong>. The division below makes both isolation and reuse possible.</li>
+</ol>
+<table>
+<thead>
+<tr>
+<th>State</th>
+<th>What lives there</th>
+<th>What a sibling session sees</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/internal/SessionState.scala#L71-L103"><code>SessionState</code></a> and <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/classic/SparkSession.scala#L175-L214">session <code>SQLConf</code></a></td>
+<td>Runtime settings, local temporary views, registered UDFs, parser/analyzer/optimizer/planner</td>
+<td>Independent settings and local namespace; a local view is not automatically visible</td>
+</tr>
+<tr>
+<td><code>SharedState</code></td>
+<td><a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/internal/SharedState.scala#L94-L100">SQL table cache</a>, <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/internal/SharedState.scala#L148-L191">external catalog and global temporary view manager</a></td>
+<td>Same cache and shared catalog infrastructure; a global temp view can be addressed through its global-temp database</td>
+</tr>
+<tr>
+<td><code>SparkContext</code></td>
+<td>One application ID, executor pool, schedulers</td>
+<td>Same running Spark application, not a second YARN allocation</td>
+</tr>
+</tbody></table>
+<h2 id="one-call-sql-text-to-a-result">One call: SQL text to a result</h2>
+<p>For <code>df = spark.sql(&quot;SELECT * FROM orders WHERE amount &gt; :floor&quot;, {&quot;floor&quot;: 10})</code>,
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/python/pyspark/sql/session.py#L1920-L1941">Python</a> converts named values to Java literal columns and calls <code>_jsparkSession.sql</code>.
+The <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/classic/SparkSession.scala#L587-L625">JVM parser</a> works with this session active, converting the SQL and
+named parameters to a <code>LogicalPlan</code>. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/classic/Dataset.scala#L129-L140"><code>Dataset.ofRows</code></a> binds it to a
+<code>QueryExecution</code>. The output is a Python DataFrame backed by a JVM <code>Dataset[Row]</code>,
+<strong>not</strong> the matching rows. Analysis may already reject the query at this point.</p>
+<p>For a <code>SELECT</code>, an action such as <code>df.count()</code> drives execution.
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/QueryExecution.scala#L343-L406"><code>QueryExecution</code></a> uses the <a href="sql-planner.html">SQL planner</a> to turn the optimized
+logical plan into a prepared physical <code>SparkPlan</code>. The <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/classic/Dataset.scala#L1639-L1643">count action</a> returns a
+JVM <code>Long</code> and then a Python <code>int</code>. Distributed work goes through Spark Core, not from
+the session directly to YARN. Do not generalize <code>SELECT</code> laziness to all <code>spark.sql</code>
+calls: <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/classic/SparkSession.scala#L571-L580">DDL/DML commands can execute eagerly</a>.</p>
+<h2 id="diagnostic-a-view-disappears-but-executors-are-still-running">Diagnostic: a view disappears but executors are still running</h2>
+<pre><code class="language-python">spark.range(1).createOrReplaceTempView(&quot;only_in_this_session&quot;)
+other = spark.newSession()
+other.table(&quot;only_in_this_session&quot;).collect()
+</code></pre>
+<p>Assuming no persistent table of that name, the last line fails to resolve the view. Use
+the creating session, or create a global temp view and qualify its name; asking for
+more executors cannot change name resolution. Conversely, <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/python/pyspark/sql/session.py#L2171-L2181"><code>other.stop()</code></a> is
+<strong>not</strong> session-local cleanup: it stops the shared context and clears session references,
+so the first session can no longer submit work either.</p>
+</main></html>

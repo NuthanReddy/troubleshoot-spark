@@ -1,0 +1,50 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Spark event log: the records a later reader can replay · Troubleshoot Spark</title><link rel="stylesheet" href="../style.css"><main class="reader"><nav><a href=".././#map">Diagnostic map</a> · <a href="../guide.html">Lifecycle</a> · <a href="../scenarios.html">Cases</a> · <a href="../components/index.html">Components</a></nav><h1 id="spark-event-log-the-records-a-later-reader-can-replay">Spark event log: the records a later reader can replay</h1>
+<p><a href="index.html">component index</a></p>
+<p>The event log records <strong>what Spark reported about an application attempt</strong>. The producer is <code>EventLoggingListener</code> in the driver JVM; the durable output is a file or directory on the configured filesystem. The <a href="history-server.html">History Server</a> reads that output later. No History Server connection is involved in a write, and the <a href="spark-ui.html">live UI</a> does not need event logging to work.</p>
+<h2 id="flow-at-a-glance">Flow at a glance</h2>
+<ol>
+<li><strong>Log startup</strong>: With event logging enabled, the driver opens the attempt&#39;s log and writes the Spark version.</li>
+<li><strong>Event listener</strong>: Encodes each selected event from its queue as one JSON line.</li>
+<li><strong>Log writer</strong>: The writer flushes at stage completion and finalizes the log on orderly shutdown.</li>
+</ol>
+<blockquote>
+<p><strong>Key distinction:</strong> A failed task&#39;s record can name its executor and end reason; look in the YARN container log for raw stdout.</p>
+</blockquote>
+<details>
+<summary>Show the animated flow</summary>
+
+<p><img src="visuals/event-log.svg" alt="The driver opens an attempt log, encodes selected events as JSON lines, and flushes them to storage"></p>
+</details>
+
+<h2 id="from-listener-callback-to-stored-record">From listener callback to stored record</h2>
+<ol>
+<li><strong>Open.</strong> With <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/internal/config/package.scala#L206-L234"><code>spark.eventLog.enabled=true</code></a> (off by default), <code>SparkContext</code> <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/SparkContext.scala#L707-L717">constructs and starts the listener</a> after obtaining the application ID and optional attempt ID. It passes the event-log base URI, Spark and Hadoop configuration. The writer needs an existing writable base directory. It opens its output and <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/EventLoggingListener.scala#L63-L104">writes and flushes <code>SparkListenerLogStart</code></a> with the Spark version, then the context registers it on the dedicated <code>eventLog</code> queue.</li>
+<li><strong>Encode.</strong> The <a href="listener-bus.html">listener bus</a> dispatches typed events on that queue&#39;s thread. <code>JsonProtocol</code> turns a selected event into one JSON object, written as one UTF-8 line before optional compression. A <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/util/JsonProtocol.scala#L196-L216"><code>SparkListenerTaskEnd</code> record</a> has an <code>Event</code> discriminator, <code>Stage ID</code>, <code>Stage Attempt ID</code>, <code>Task Type</code>, <code>Task End Reason</code>, <code>Task Info</code>, executor metrics and, when available, <code>Task Metrics</code>. It contains neither the computed partition nor the task&#39;s stdout.</li>
+<li><strong>Select and flush.</strong> Task starts/ends can remain buffered; stage completion, job start/end, executor changes and application end request a flush. The writer <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/deploy/history/EventLogFileWriters.scala#L60-L148">flushes its buffer and calls <code>hflush</code> on a Hadoop output stream</a> when requested. Stage/job properties and environment updates have redaction paths. This is not a promise that every listener event is persisted: <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/EventLoggingListener.scala#L244-L282">block updates are opt-in and metrics have a special path</a>. With <code>spark.eventLog.logStageExecutorMetrics</code>, the listener accumulates peaks per <code>(stageId, stageAttemptId, executorId)</code> and emits stage summaries at <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/EventLoggingListener.scala#L106-L166">stage completion</a>; it does not record every executor heartbeat. Configured event names can also be excluded.</li>
+<li><strong>Close.</strong> On orderly shutdown the context posts application end, <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/SparkContext.scala#L2638-L2692">stops the bus, then stops the writer</a>. Application end need not be the very last JSON line. Writer finalization marks the end of <em>writing</em>, not a successful job outcome.</li>
+</ol>
+<h2 id="the-two-on-disk-layouts">The two on-disk layouts</h2>
+<table>
+<thead>
+<tr>
+<th>Writer</th>
+<th>While the driver is running</th>
+<th>At clean writer shutdown</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/deploy/history/EventLogFileWriters.scala#L223-L257">Single file</a></td>
+<td>One attempt-specific file, with optional codec suffix and <code>.inprogress</code>.</td>
+<td>Close and rename the file without <code>.inprogress</code>.</td>
+</tr>
+<tr>
+<td><a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/deploy/history/EventLogFileWriters.scala#L300-L399">Rolling files</a></td>
+<td><code>eventlog_v2_&lt;key&gt;</code> (key identifies the app and optional attempt) contains numbered <code>events_&lt;index&gt;_&lt;key&gt;</code> segments, optionally with a codec suffix, and a zero-byte <code>appstatus_&lt;key&gt;.inprogress</code> marker. Rollover uses the pre-compression stream count plus the next JSON string length, not the compressed file size.</td>
+<td>Close the current segment and rename the <strong>status marker</strong>; do not rename every segment.</td>
+</tr>
+</tbody></table>
+<p><a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/internal/config/package.scala#L307-L323"><code>spark.eventLog.rolling.enabled</code></a> selects the writer (true at this revision). Use a filesystem URI visible to the driver <strong>and</strong> the history service, e.g. a shared HDFS directory. Two machines can resolve the same <code>file:</code> pathname to different local files.</p>
+<h2 id="worked-example-one-failed-attempt-two-kinds-of-evidence">Worked example: one failed attempt, two kinds of evidence</h2>
+<p>Suppose an orders task fails in stage <code>3</code>, attempt <code>0</code>. The event log can supply the task attempt ID, executor ID, times and structured failure reason. A later successful attempt for the same partition is a <strong>different event</strong>; it does not erase the failed attempt. This is what lets history reconstruct a retry. A diagnostic <code>println</code> next to the failing code is not another event. For raw process output, consult driver or executor logs: YARN launch commands redirect <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/deploy/yarn/Client.scala#L1160-L1169">AM stdout/stderr</a> and <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/deploy/yarn/ExecutorRunnable.scala#L198-L210">executor stdout/stderr</a> to their container log directories; a client-mode driver&#39;s own output stays on the client. A failure event can contain exception text without containing the full process log.</p>
+<p><strong>If the last attempts are missing:</strong> look for queue drops in the driver, the event filter/settings, writer I/O errors, and an in-progress file/marker. A killed driver may leave buffered records unwritten and no application-end event. Opening the live UI or starting the History Server later cannot regenerate those records. Event logging is also distinct from an RDD/stream checkpoint: replay reconstructs status, not an executable Spark application.</p>
+</main></html>

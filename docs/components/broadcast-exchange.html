@@ -1,0 +1,101 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Broadcast exchange: building the small side · Troubleshoot Spark</title><link rel="stylesheet" href="../style.css"><main class="reader"><nav><a href=".././#map">Diagnostic map</a> · <a href="../guide.html">Lifecycle</a> · <a href="../scenarios.html">Cases</a> · <a href="../components/index.html">Components</a></nav><h1 id="broadcast-exchange-building-the-small-side">Broadcast exchange: building the small side</h1>
+<p><a href="index.html">component index</a> | <a href="broadcast-hash-join.html">Broadcast hash join: probing the result</a></p>
+<p><code>BroadcastExchangeExec</code> turns the <strong>entire output of one child</strong> into a Spark
+<code>Broadcast</code> handle. In a hash join it builds one lookup relation on the <strong>driver
+JVM</strong>, from rows produced by executor tasks. It does not iterate the large
+table, decide join matches, or implement <a href="broadcast-manager.html">distribution of the broadcast blocks</a>.
+This is an internal SQL operator, not a Python call to <code>sc.broadcast</code>.</p>
+<h2 id="flow-at-a-glance">Flow at a glance</h2>
+<ol>
+<li><strong>Build tasks</strong>: Send region rows to the driver.</li>
+<li><strong>Driver exchange</strong>: Build a hashed relation keyed by region ID.</li>
+<li><strong>Core broadcast</strong>: Publish the relation and return its handle.</li>
+</ol>
+<blockquote>
+<p><strong>Key distinction:</strong> The exchange builds the lookup table; join tasks probe it after resolving the handle.</p>
+</blockquote>
+<details>
+<summary>Show the animated flow</summary>
+
+<p><img src="visuals/broadcast-exchange.svg" alt="Build tasks send region rows to the driver, which indexes them by region ID and gets a broadcast handle for the join."></p>
+</details>
+
+<h2 id="contract-and-lifetime">Contract and lifetime</h2>
+<table>
+<thead>
+<tr>
+<th>Interface</th>
+<th>What it carries</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>From the parent</td>
+<td>An unsatisfied <code>BroadcastDistribution(mode)</code> makes <code>EnsureRequirements.resolveChild</code> insert the exchange. For a hash join, <code>HashedRelationBroadcastMode</code> holds the build keys bound to the child&#39;s output and the null-aware flag. The exchange advertises <code>BroadcastPartitioning(mode)</code>.</td>
+</tr>
+<tr>
+<td>From the child</td>
+<td><code>child.executeCollectIterator()</code> returns <strong><code>(rowCount, Iterator[InternalRow])</code> on the driver</strong>. The ordinary implementation first collects counts and compressed row buffers for the partitions, then decodes the buffers on iteration. The iterator does not make this a bounded-memory, remote row stream.</td>
+</tr>
+<tr>
+<td>To the consumer</td>
+<td><code>executeBroadcast[HashedRelation]()</code> obtains the broadcast handle. The ordinary row RDD path, <code>BroadcastExchangeExec.doExecute()</code>, is unsupported. AQE can instead observe completion via <code>BroadcastQueryStageExec.doMaterialize</code> and <code>submitBroadcastJob()</code>.</td>
+</tr>
+<tr>
+<td>Owned state</td>
+<td>Each exchange has a <code>runId</code>/job tag, a lazy <code>relationFuture</code>, a completion promise and SQL metrics. <code>doPrepare</code> starts the future on the driver&#39;s <code>broadcast-exchange</code> pool with SQL thread-local context. Consumers of the materialized exchange reuse its result; retained blocks and their transfer belong to Spark&#39;s broadcast subsystem.</td>
+</tr>
+</tbody></table>
+<p>See <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/exchange/EnsureRequirements.scala#L179-L195">exchange insertion</a>, <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/SparkPlan.scala#L381-L492">collect and decode</a>, <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/exchange/BroadcastExchangeExec.scala#L46-L111">submission and
+cancellation APIs</a> and <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/adaptive/QueryStageExec.scala#L246-L275">AQE&#39;s broadcast-stage adapter</a>.</p>
+<h2 id="trace-materializing-regions-for-an-orders-join">Trace: materializing <code>regions</code> for an orders join</h2>
+<figure class="source-figure"><a href="../diagrams/components-broadcast-exchange-1.svg" title="Open diagram at full size"><img loading="lazy" src="../diagrams/components-broadcast-exchange-1.svg" alt="Sequence diagram for components broadcast exchange; open to enlarge"></a><figcaption>Sequence diagram · <a href="../diagrams/components-broadcast-exchange-1.svg">Open full size</a></figcaption><details><summary>Text equivalent</summary><pre>sequenceDiagram
+    participant X as Driver exchange
+    participant B as Build-side executor tasks
+    participant S as Spark broadcast subsystem
+    participant J as Streamed-side task
+    X-&gt;&gt;B: Collect regions via a Spark job
+    B--&gt;&gt;X: Partition row counts and encoded rows
+    X-&gt;&gt;X: Transform build keys and rows into HashedRelation
+    X-&gt;&gt;S: broadcastInternal(relation, serializedOnly = true)
+    S--&gt;&gt;X: Broadcast handle
+    J-&gt;&gt;S: Resolve handle.value when needed
+    Note over J: The join, not the exchange, probes orders</pre></details></figure>
+<ol>
+<li>Assume <a href="sql-planner.html">the planner</a> chose <code>BuildRight</code> on <code>o.region_id = r.id</code>
+from a 6 MiB estimate. The asynchronous build tags its Spark job so it can be
+cancelled separately. <code>numOutputRows</code> records the actual count. A count <strong>at
+or above</strong> <code>maxBroadcastRows</code> fails before constructing the relation; the cap
+depends on the mode and key representation.</li>
+<li><code>mode.transform(input, Some(numRows))</code> builds the index. With an eligible
+single bound <code>LongType</code> key, <code>HashedRelation.apply</code> uses <code>LongHashedRelation</code>;
+other nonempty ordinary hash-key shapes use <code>UnsafeHashedRelation</code>. Empty
+input has a dedicated representation. A non-hash broadcast consumer need not
+request a hash table at all.</li>
+<li><code>dataSize</code> measures the built relation&#39;s <strong>estimated memory size</strong>, not the
+planner&#39;s estimate or the number of wire bytes. An actual 18 MiB relation can
+pass even with a 10 MiB automatic <em>planning</em> threshold. The distinct
+<code>spark.sql.maxBroadcastTableSize</code> limit is checked <strong>after build</strong>, using
+<code>&gt;=</code>; in this revision it defaults to 8 GiB. A hint bypasses neither this
+guard nor the row guard.</li>
+<li><code>SparkContext.broadcastInternal(..., serializedOnly = true)</code> publishes the
+built relation without asking the core broadcast subsystem to cache its
+unserialized copy on the driver. This does not eliminate the memory needed to
+build it. Success completes the promise with the handle, <strong>not</strong> with joined rows.</li>
+</ol>
+<p><a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/exchange/BroadcastExchangeExec.scala#L161-L229">Build code and guards</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/joins/HashedRelation.scala#L1215-L1234">hashed mode</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/joins/HashedRelation.scala#L136-L165">relation selection</a> ·
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/SparkContext.scala#L1786-L1798">SparkContext handoff</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/catalyst/src/main/scala/org/apache/spark/sql/internal/SQLConf.scala#L2555-L2565">timeout and size settings</a>.</p>
+<h2 id="when-the-consuming-join-appears-to-wait">When the consuming join appears to wait</h2>
+<p>In the SQL UI, find <code>BroadcastExchange</code> (possibly under <code>BroadcastQueryStage</code>)
+and compare <strong>time to collect</strong>, <strong>time to build</strong>, and <strong>time to broadcast</strong>.
+Collection includes waiting for the child job; build time includes decoding and
+constructing the relation. Broadcast time measures the driver&#39;s publish call,
+not later fetch latency on every executor. The completed exchange also reports
+<strong>data size</strong> and <strong>number of output rows</strong> as runtime statistics.</p>
+<p>If the bounded <code>doExecuteBroadcast</code> wait exceeds <code>spark.sql.broadcastTimeout</code>
+(300 seconds by default here), the exchange logs a timeout, cancels the tagged
+jobs and future <strong>if still running</strong>, then throws. A driver out-of-memory error
+during build instead fails the future with a build/broadcast error. Raising the
+timeout cannot make the relation fit; inspect the child projection, filtering,
+estimate and hint before blaming streamed-side tasks. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/exchange/BroadcastExchangeExec.scala#L124-L150">Metrics</a> ·
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/exchange/BroadcastExchangeExec.scala#L231-L281">error, preparation and wait paths</a>.</p>
+</main></html>

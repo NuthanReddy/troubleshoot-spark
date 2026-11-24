@@ -1,0 +1,415 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>PySpark on YARN: component design reference · Troubleshoot Spark</title><link rel="stylesheet" href="../style.css"><main class="reader"><nav><a href=".././#map">Diagnostic map</a> · <a href="../guide.html">Lifecycle</a> · <a href="../scenarios.html">Cases</a> · <a href="../components/index.html">Components</a></nav><h1 id="pyspark-on-yarn-component-design-reference">PySpark on YARN: component design reference</h1>
+<p>Use this reference to follow a call across process boundaries or to find the
+component that owns a decision. Each page starts with one worked handoff.
+Read the three steps, or expand the diagram to follow the handoff visually.
+The labels stay visible with motion off. If your Markdown viewer shows only a
+still image, you can also open that component&#39;s SVG directly in a browser.</p>
+<p>This is <strong>classic PySpark batch execution on managed YARN</strong>, not Spark Connect or
+Spark Standalone. The pages describe the existing implementation at
+<a href="https://github.com/apache/spark/tree/dada2a6db5d73b152d6ba16e4fe21406f86abfe3">Spark <code>dada2a6</code></a>.
+Hadoop service pages use <a href="https://hadoop.apache.org/docs/r3.4.1/">Apache Hadoop 3.4.1</a>.
+HDFS, dynamic allocation, speculation, and the external shuffle service are not
+required for every application. Ports given as defaults are not fixed deployment addresses.</p>
+<p><strong>Companions:</strong> <a href="../guide.html">End-to-end lifecycle, discovery, and ports</a>
+and <a href="../scenarios.html">scenarios traced through the source</a>.</p>
+<h2 id="flow-at-a-glance">Flow at a glance</h2>
+<ol>
+<li><strong>ApplicationMaster</strong>: Asks the NodeManager named in the grant to launch an executor.</li>
+<li><strong>Executor</strong>: Registers for tasks and separately advertises its block-serving address.</li>
+<li><strong>Reduce task</strong>: Looks up its map output and fetches the bytes from the serving node.</li>
+</ol>
+<blockquote>
+<p><strong>Key distinction:</strong> A grant identifies where a process <em>can</em> run. Registration tells Spark where it <em>can</em> send work. Neither transfers a shuffle block.</p>
+</blockquote>
+<details>
+<summary>Show the animated flow</summary>
+
+<p><img src="visuals/overview.svg" alt="A container grant leads to executor registration; the reducer then fetches data from the serving node."></p>
+</details>
+
+<h2 id="follow-a-record-not-just-a-class-name">Follow a record, not just a class name</h2>
+<p>Suppose a Python script groups paid orders by region and writes the counts to
+Parquet. These are the handoffs for a typical shuffled aggregation:</p>
+<figure class="source-figure"><a href="../diagrams/components-index-1.svg" title="Open diagram at full size"><img loading="lazy" src="../diagrams/components-index-1.svg" alt="Sequence diagram for components index; open to enlarge"></a><figcaption>Sequence diagram · <a href="../diagrams/components-index-1.svg">Open full size</a></figcaption><details><summary>Text equivalent</summary><pre>sequenceDiagram
+    participant P as Python driver
+    participant D as Driver JVM
+    participant Y as AM and YARN services
+    participant M as Map executor
+    participant R as Reduce executor
+    participant F as File system
+    P-&gt;&gt;D: Request a DataFrame write through the local gateway
+    Note over D,Y: Executor capacity may already have been requested before the action
+    Y-&gt;&gt;M: NM launches executor with driver URL
+    M-&gt;&gt;D: Register executor and advertise block manager
+    Y-&gt;&gt;R: NM launches executor with driver URL
+    R-&gt;&gt;D: Register executor and advertise block manager
+    D-&gt;&gt;M: Launch tasks for input partitions
+    M-&gt;&gt;F: Read assigned input
+    M--&gt;&gt;D: MapStatus with shuffle location and sizes
+    D-&gt;&gt;R: Launch tasks for reduce partitions
+    R-&gt;&gt;D: Get shuffle locations if not cached
+    R-&gt;&gt;M: Fetch remote shuffle blocks from serving address
+    M--&gt;&gt;R: Partition bytes, without going through driver
+    R-&gt;&gt;F: Write task output and perform task commit
+    R--&gt;&gt;D: Task commit messages
+    D-&gt;&gt;F: Request job commit through commit protocol
+    D--&gt;&gt;P: Return success only if the write succeeded</pre></details></figure>
+<p>The two executor lanes are roles, not dedicated pools. The AM and driver JVM
+share a process in cluster mode, not client mode. For a built-in filter and
+aggregation, a Python driver does <strong>not</strong> imply executor-side Python workers.
+If the external shuffle service serves the map data, the reducer contacts the
+service on the producer node instead of the original executor.</p>
+<h2 id="component-directory">Component directory</h2>
+<h3 id="1-submission-and-executor-acquisition">1. Submission and executor acquisition</h3>
+<table>
+<thead>
+<tr>
+<th>Component</th>
+<th>Decision or handoff to look for</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><a href="spark-submit.html"><code>spark-submit</code></a></td>
+<td>Which entry point runs locally, and which arguments move into the YARN application?</td>
+</tr>
+<tr>
+<td><a href="yarn-client.html">Spark YARN client</a></td>
+<td>Which files are staged, what goes in the submission context, and when does submission fail before launch?</td>
+</tr>
+<tr>
+<td><a href="application-master.html">ApplicationMaster</a></td>
+<td>Who starts or locates the driver, registers the attempt, and reports its final status?</td>
+</tr>
+<tr>
+<td><a href="yarn-allocator.html">YarnAllocator</a></td>
+<td>How do desired executors become YARN container requests, matches, launches, and loss reports?</td>
+</tr>
+</tbody></table>
+<h3 id="2-cluster-and-file-system-services">2. Cluster and file-system services</h3>
+<table>
+<thead>
+<tr>
+<th>Component</th>
+<th>Decision or handoff to look for</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><a href="resource-manager.html">ResourceManager</a></td>
+<td>Who arbitrates queue capacity, knows the live nodes, and tracks application attempts?</td>
+</tr>
+<tr>
+<td><a href="node-manager.html">NodeManager</a></td>
+<td>Who localizes resources, physically starts a JVM, monitors its container, and cleans it up?</td>
+</tr>
+<tr>
+<td><a href="yarn-container.html">YARN container</a></td>
+<td>What does a grant identify, and how is its lifecycle different from an executor or task?</td>
+</tr>
+<tr>
+<td><a href="hdfs-namenode.html">HDFS NameNode</a></td>
+<td>Where does a client get namespace and block-location metadata?</td>
+</tr>
+<tr>
+<td><a href="hdfs-datanode.html">HDFS DataNode</a></td>
+<td>Which process serves file bytes and participates in replicated block writes?</td>
+</tr>
+</tbody></table>
+<h3 id="3-the-driver-two-processes-different-responsibilities">3. The driver: two processes, different responsibilities</h3>
+<table>
+<thead>
+<tr>
+<th>Component</th>
+<th>Decision or handoff to look for</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><a href="spark-driver.html">Spark driver JVM</a></td>
+<td>Which responsibilities share an application lifetime and failure boundary?</td>
+</tr>
+<tr>
+<td><a href="python-driver.html">Python driver</a></td>
+<td>Who runs the script&#39;s top-level code and observes its exit?</td>
+</tr>
+<tr>
+<td><a href="py4j-gateway.html">Py4J gateway</a></td>
+<td>How does a Python driver call its local JVM without sending that call directly to executors?</td>
+</tr>
+<tr>
+<td><a href="spark-session.html">SparkSession</a></td>
+<td>Which SQL state belongs to a session, and what can two sessions share?</td>
+</tr>
+<tr>
+<td><a href="spark-context.html">SparkContext</a></td>
+<td>Who initializes application services, submits RDD work, and coordinates shutdown?</td>
+</tr>
+<tr>
+<td><a href="spark-env.html">SparkEnv</a></td>
+<td>How does a driver or executor obtain its own RPC, serializer, storage, and shuffle services?</td>
+</tr>
+</tbody></table>
+<h3 id="4-scheduling-from-dependencies-to-a-launch-message">4. Scheduling: from dependencies to a launch message</h3>
+<table>
+<thead>
+<tr>
+<th>Component</th>
+<th>Decision or handoff to look for</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><a href="dag-scheduler.html">DAGScheduler</a></td>
+<td>Which stages are ready, and when does recovery require rerunning a producer?</td>
+</tr>
+<tr>
+<td><a href="task-scheduler.html">TaskSchedulerImpl</a></td>
+<td>How are executor resource offers matched to eligible task sets?</td>
+</tr>
+<tr>
+<td><a href="task-set-manager.html">TaskSetManager</a></td>
+<td>Which partition attempt gets a slot? Which failures count, and which duplicate result wins?</td>
+</tr>
+<tr>
+<td><a href="driver-scheduler-backend.html">CoarseGrainedSchedulerBackend</a></td>
+<td>Who tracks registered executor resources and sends <code>LaunchTask</code>?</td>
+</tr>
+<tr>
+<td><a href="yarn-scheduler-backend.html">YarnSchedulerBackend</a></td>
+<td>How do capacity requests and executor loss reasons cross the driver/AM boundary?</td>
+</tr>
+</tbody></table>
+<h3 id="5-executor-runtime-and-control-messages">5. Executor runtime and control messages</h3>
+<table>
+<thead>
+<tr>
+<th>Component</th>
+<th>Decision or handoff to look for</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><a href="executor-backend.html">CoarseGrainedExecutorBackend</a></td>
+<td>Who bootstraps from the driver URL, registers, and decodes launch instructions?</td>
+</tr>
+<tr>
+<td><a href="executor.html">Executor</a></td>
+<td>Who owns the task thread pool, local execution services, and result serialization?</td>
+</tr>
+<tr>
+<td><a href="task-attempt.html">Task attempt</a></td>
+<td>What is per-attempt state, and how does interruption differ from normal completion?</td>
+</tr>
+<tr>
+<td><a href="task-result-getter.html">TaskResultGetter</a></td>
+<td>When does a status update contain the result, and when must the driver fetch a block?</td>
+</tr>
+<tr>
+<td><a href="rpc-env.html">RpcEnv</a></td>
+<td>What is a named endpoint rather than a TCP listener, and how do replies find the caller?</td>
+</tr>
+</tbody></table>
+<h3 id="6-capacity-liveness-and-observation">6. Capacity, liveness, and observation</h3>
+<table>
+<thead>
+<tr>
+<th>Component</th>
+<th>Decision or handoff to look for</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><a href="executor-allocation-manager.html">ExecutorAllocationManager</a></td>
+<td>When does sustained backlog justify requesting a higher target?</td>
+</tr>
+<tr>
+<td><a href="executor-monitor.html">ExecutorMonitor</a></td>
+<td>Which idle executors can be considered for removal given cached and shuffle state?</td>
+</tr>
+<tr>
+<td><a href="heartbeat-receiver.html">HeartbeatReceiver</a></td>
+<td>When does the driver expire an executor independently of YARN node health?</td>
+</tr>
+<tr>
+<td><a href="listener-bus.html">LiveListenerBus</a></td>
+<td>How do scheduler events reach listeners without turning an observation into a scheduling command?</td>
+</tr>
+<tr>
+<td><a href="event-log.html">Spark event log</a></td>
+<td>What structured events are written for replay, as distinct from container stdout/stderr?</td>
+</tr>
+<tr>
+<td><a href="spark-ui.html">Live Spark UI</a></td>
+<td>Which driver-side state explains a running job, stage, SQL execution, or executor?</td>
+</tr>
+<tr>
+<td><a href="history-server.html">Spark History Server</a></td>
+<td>What can a separate service reconstruct after the driver is gone, and what evidence can be missing?</td>
+</tr>
+</tbody></table>
+<h3 id="7-block-storage-and-reuse">7. Block storage and reuse</h3>
+<table>
+<thead>
+<tr>
+<th>Component</th>
+<th>Decision or handoff to look for</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><a href="block-manager.html">BlockManager</a></td>
+<td>Who stores bytes locally and falls back to other locations?</td>
+</tr>
+<tr>
+<td><a href="block-manager-master.html">BlockManagerMaster</a></td>
+<td>Who tracks block managers and reported block locations without proxying the data?</td>
+</tr>
+<tr>
+<td><a href="block-transfer-service.html">NettyBlockTransferService</a></td>
+<td>Which listener serves incoming block transfers, separate from scheduler RPC?</td>
+</tr>
+<tr>
+<td><a href="rdd-cache.html">Persisted RDD partition path</a></td>
+<td>What happens to one partition on a local hit, remote hit, or complete miss?</td>
+</tr>
+<tr>
+<td><a href="broadcast-manager.html">BroadcastManager</a></td>
+<td>How does a reusable broadcast value become pieces that executors can fetch?</td>
+</tr>
+</tbody></table>
+<h3 id="8-shuffle-directory-files-and-fetch">8. Shuffle: directory, files, and fetch</h3>
+<table>
+<thead>
+<tr>
+<th>Component</th>
+<th>Decision or handoff to look for</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><a href="map-output-tracker-master.html">MapOutputTrackerMaster</a></td>
+<td>Where does the driver record the locations and sizes of map outputs?</td>
+</tr>
+<tr>
+<td><a href="map-output-tracker-worker.html">MapOutputTrackerWorker</a></td>
+<td>How does a reducer discover and cache the metadata it needs?</td>
+</tr>
+<tr>
+<td><a href="shuffle-writer.html">Shuffle writer</a></td>
+<td>Who partitions records, handles spill, and returns map-output status?</td>
+</tr>
+<tr>
+<td><a href="shuffle-reader.html">Shuffle reader</a></td>
+<td>How are local and remote reads selected, fetched, and consumed?</td>
+</tr>
+<tr>
+<td><a href="shuffle-block-resolver.html">Shuffle block resolver</a></td>
+<td>How does a logical shuffle block become a segment of a physical file?</td>
+</tr>
+<tr>
+<td><a href="external-shuffle-service.html">External shuffle service</a></td>
+<td>When can shuffle data still be served after its executor exits?</td>
+</tr>
+</tbody></table>
+<h3 id="9-sql-planning-and-physical-execution">9. SQL planning and physical execution</h3>
+<table>
+<thead>
+<tr>
+<th>Component</th>
+<th>Decision or handoff to look for</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><a href="sql-planner.html">Spark SQL planner</a></td>
+<td>How do logical operations become an executable physical plan rather than task assignments?</td>
+</tr>
+<tr>
+<td><a href="adaptive-query-execution.html">Adaptive Query Execution</a></td>
+<td>Which decisions can change after a query stage materializes?</td>
+</tr>
+<tr>
+<td><a href="broadcast-exchange.html">Broadcast exchange</a></td>
+<td>Who materializes the build side for distribution?</td>
+</tr>
+<tr>
+<td><a href="broadcast-hash-join.html">Broadcast hash join</a></td>
+<td>Who probes that relation, and why need the large side not shuffle for the join?</td>
+</tr>
+<tr>
+<td><a href="python-udf-operator.html">Python UDF physical operator</a></td>
+<td>Which inputs cross the JVM/Python boundary, and how are results associated with rows?</td>
+</tr>
+</tbody></table>
+<h3 id="10-python-workers-and-durable-output">10. Python workers and durable output</h3>
+<table>
+<thead>
+<tr>
+<th>Component</th>
+<th>Decision or handoff to look for</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><a href="python-worker-factory.html">PythonWorkerFactory</a></td>
+<td>When is a worker started, reused, or discarded on an executor?</td>
+</tr>
+<tr>
+<td><a href="python-worker.html">Python worker</a></td>
+<td>Which process runs a partition function or UDF, and how does it return data or an exception?</td>
+</tr>
+<tr>
+<td><a href="python-runner.html">Executor-side Python runner</a></td>
+<td>Who frames the task inputs and consumes the worker stream? This is not the driver launcher.</td>
+</tr>
+<tr>
+<td><a href="file-format-writer.html">FileFormatWriter</a></td>
+<td>How does a V1 file write collect task outcomes before invoking job commit?</td>
+</tr>
+<tr>
+<td><a href="file-commit-protocol.html">File commit protocol</a></td>
+<td>What belongs to task commit versus job commit, and what does abort guarantee?</td>
+</tr>
+<tr>
+<td><a href="output-commit-coordinator.html">OutputCommitCoordinator</a></td>
+<td>When authorization is used, which competing task attempt may commit?</td>
+</tr>
+</tbody></table>
+<h2 id="choose-the-right-evidence">Choose the right evidence</h2>
+<table>
+<thead>
+<tr>
+<th>Observation</th>
+<th>Start here</th>
+<th>Do not infer</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Container granted; no Spark executor yet</td>
+<td><a href="yarn-allocator.html">YarnAllocator</a> and <a href="executor-backend.html">executor bootstrap</a></td>
+<td>A grant does not show that the JVM started or reached the driver.</td>
+</tr>
+<tr>
+<td>Registered executor; tasks pending</td>
+<td><a href="driver-scheduler-backend.html">scheduler backend</a>, <a href="task-scheduler.html">resource offers</a>, <a href="task-set-manager.html">task-set locality</a></td>
+<td>Registration does not guarantee a free compatible slot.</td>
+</tr>
+<tr>
+<td>Reducer knows a producer&#39;s host but fetch fails</td>
+<td><a href="map-output-tracker-worker.html">map-output metadata</a>, <a href="shuffle-block-resolver.html">block resolver</a>, <a href="external-shuffle-service.html">serving endpoint</a> if enabled</td>
+<td>Knowing a location does not prove the file or service is still available.</td>
+</tr>
+<tr>
+<td>UDF fails; other tasks on the same machine still run</td>
+<td><a href="python-runner.html">Python runner</a> and <a href="python-worker.html">worker</a></td>
+<td>A task exception need not mean its YARN container died.</td>
+</tr>
+<tr>
+<td>All file-write tasks succeeded; write action failed</td>
+<td><a href="file-format-writer.html">FileFormatWriter</a> and <a href="file-commit-protocol.html">file commit protocol</a></td>
+<td>Task success does not prove the driver-side job commit succeeded.</td>
+</tr>
+<tr>
+<td>Live UI disappeared after shutdown</td>
+<td><a href="event-log.html">event log</a> and <a href="history-server.html">History Server</a></td>
+<td>Container logs are not a substitute for the events used to rebuild the Spark UI.</td>
+</tr>
+</tbody></table>
+<h2 id="maintaining-the-flow-diagrams">Maintaining the flow diagrams</h2>
+<p>Edit the three numbered steps under <strong>Flow at a glance</strong> in the relevant page.
+From this directory, <code>node visuals/render-flows.mjs</code> rebuilds the SVG files;
+<code>node visuals/render-flows.mjs --check</code> checks whether they are up to date.
+Reading the guides does not require Node, JavaScript, or a network connection:
+keep the <code>visuals</code> folder alongside the Markdown files when copying them.</p>
+</main></html>

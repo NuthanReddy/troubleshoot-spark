@@ -1,0 +1,87 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 570.134 575.3" width="570.134" height="575.3" style="--bg:#101d2e;--fg:#ecf3f8;--line:#839ab5;--accent:#93e3d1;background:var(--bg)">
+<style>
+  text { font-family: 'system-ui', system-ui, sans-serif; }
+  svg {
+    /* Derived from --bg and --fg (overridable via --line, --accent, etc.) */
+    --_text:          var(--fg);
+    --_text-sec:      var(--muted, color-mix(in srgb, var(--fg) 60%, var(--bg)));
+    --_text-muted:    var(--muted, color-mix(in srgb, var(--fg) 40%, var(--bg)));
+    --_text-faint:    color-mix(in srgb, var(--fg) 25%, var(--bg));
+    --_line:          var(--line, color-mix(in srgb, var(--fg) 50%, var(--bg)));
+    --_arrow:         var(--accent, color-mix(in srgb, var(--fg) 85%, var(--bg)));
+    --_node-fill:     var(--surface, color-mix(in srgb, var(--fg) 3%, var(--bg)));
+    --_node-stroke:   var(--border, color-mix(in srgb, var(--fg) 20%, var(--bg)));
+    --_group-fill:    var(--bg);
+    --_group-hdr:     color-mix(in srgb, var(--fg) 5%, var(--bg));
+    --_inner-stroke:  color-mix(in srgb, var(--fg) 12%, var(--bg));
+    --_key-badge:     color-mix(in srgb, var(--fg) 10%, var(--bg));
+  }
+</style>
+<defs>
+  <marker id="arrowhead" markerWidth="8" markerHeight="5" refX="7" refY="2.5" orient="auto">
+    <polygon points="0 0, 8 2.5, 0 5" fill="var(--_arrow)" stroke="var(--_arrow)" stroke-width="0.75" stroke-linejoin="round" />
+  </marker>
+  <marker id="arrowhead-start" markerWidth="8" markerHeight="5" refX="1" refY="2.5" orient="auto-start-reverse">
+    <polygon points="8 0, 0 2.5, 8 5" fill="var(--_arrow)" stroke="var(--_arrow)" stroke-width="0.75" stroke-linejoin="round" />
+  </marker>
+</defs>
+<polyline class="edge" data-from="_start" data-to="Assigned" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="284.96200000000005,68 284.96200000000005,116" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="Assigned" data-to="Running" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="Runner reports RUNNING" points="284.96200000000005,152.9 284.96200000000005,269.20000000000005" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="Running" data-to="Finished" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="Result bytes or block reference" points="262.24800000000005,306.1 262.24800000000005,318.1 118.5,318.1 118.5,410.40000000000003" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="Running" data-to="Killed" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="Kill observed or commit denied" points="284.96200000000005,306.1 284.96200000000005,410.40000000000003" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="Running" data-to="Failed" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="Exception or shuffle fetch failure" points="307.67600000000004,306.1 307.67600000000004,318.1 451.48400000000004,318.1 451.48400000000004,410.40000000000003" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="Finished" data-to="_end" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="118.5,447.3 118.5,495.3" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="Killed" data-to="_end2" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="284.96200000000005,447.3 284.96200000000005,495.3" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="Failed" data-to="_end3" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="451.48400000000004,447.3 451.48400000000004,495.3" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<g class="edge-label" data-from="Assigned" data-to="Running" data-label="Runner reports RUNNING">
+  <rect x="215.96200000000007" y="195.9" width="137.63799999999998" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1" />
+  <text x="284.78100000000006" y="211.05" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">Runner reports RUNNING</text>
+</g>
+<g class="edge-label" data-from="Running" data-to="Finished" data-label="Result bytes or block reference">
+  <rect x="36" y="325.1" width="164.96200000000005" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1" />
+  <text x="118.48100000000002" y="340.25" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">Result bytes or block reference</text>
+</g>
+<g class="edge-label" data-from="Running" data-to="Killed" data-label="Kill observed or commit denied">
+  <rect x="204.96200000000007" y="349.1" width="159.022" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1" />
+  <text x="284.47300000000007" y="364.25" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">Kill observed or commit denied</text>
+</g>
+<g class="edge-label" data-from="Running" data-to="Failed" data-label="Exception or shuffle fetch failure">
+  <rect x="367.98400000000004" y="325.1" width="166.15" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1" />
+  <text x="451.059" y="340.25" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">Exception or shuffle fetch failure</text>
+</g>
+<g class="node" data-id="_start" data-label="" data-shape="state-start">
+  <circle cx="284.96200000000005" cy="54" r="12" fill="var(--_text)" stroke="none" />
+</g>
+<g class="node" data-id="Assigned" data-label="Assigned" data-shape="rounded">
+  <rect x="235.82900000000006" y="116" width="98.26599999999999" height="36.900000000000006" rx="6" ry="6" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="284.96200000000005" y="134.45" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">Assigned</text>
+</g>
+<g class="node" data-id="Running" data-label="Running" data-shape="rounded">
+  <rect x="239.53400000000005" y="269.20000000000005" width="90.856" height="36.900000000000006" rx="6" ry="6" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="284.96200000000005" y="287.65000000000003" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">Running</text>
+</g>
+<g class="node" data-id="Finished" data-label="Finished" data-shape="rounded">
+  <rect x="71.59" y="410.40000000000003" width="93.82" height="36.900000000000006" rx="6" ry="6" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="118.5" y="428.85" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">Finished</text>
+</g>
+<g class="node" data-id="Killed" data-label="Killed" data-shape="rounded">
+  <rect x="247.68500000000006" y="410.40000000000003" width="74.554" height="36.900000000000006" rx="6" ry="6" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="284.96200000000005" y="428.85" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">Killed</text>
+</g>
+<g class="node" data-id="Failed" data-label="Failed" data-shape="rounded">
+  <rect x="411.98400000000004" y="410.40000000000003" width="79" height="36.900000000000006" rx="6" ry="6" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="451.48400000000004" y="428.85" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">Failed</text>
+</g>
+<g class="node" data-id="_end" data-label="" data-shape="state-end">
+  <circle cx="118.5" cy="509.3" r="12" fill="none" stroke="var(--_text)" stroke-width="1.5" />
+  <circle cx="118.5" cy="509.3" r="8" fill="var(--_text)" stroke="none" />
+</g>
+<g class="node" data-id="_end2" data-label="" data-shape="state-end">
+  <circle cx="284.96200000000005" cy="509.3" r="12" fill="none" stroke="var(--_text)" stroke-width="1.5" />
+  <circle cx="284.96200000000005" cy="509.3" r="8" fill="var(--_text)" stroke="none" />
+</g>
+<g class="node" data-id="_end3" data-label="" data-shape="state-end">
+  <circle cx="451.48400000000004" cy="509.3" r="12" fill="none" stroke="var(--_text)" stroke-width="1.5" />
+  <circle cx="451.48400000000004" cy="509.3" r="8" fill="var(--_text)" stroke="none" />
+</g>
+</svg>

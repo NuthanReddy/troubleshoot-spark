@@ -1,0 +1,110 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>YARN NodeManager: from a grant to a process on one worker · Troubleshoot Spark</title><link rel="stylesheet" href="../style.css"><main class="reader"><nav><a href=".././#map">Diagnostic map</a> · <a href="../guide.html">Lifecycle</a> · <a href="../scenarios.html">Cases</a> · <a href="../components/index.html">Components</a></nav><h1 id="yarn-nodemanager-from-a-grant-to-a-process-on-one-worker">YARN NodeManager: from a grant to a process on one worker</h1>
+<p><a href="index.html">component index</a> | <a href="../guide.html">PySpark on YARN walkthrough</a></p>
+<p>The NodeManager (NM) turns an authorized launch request into a local process
+and reports how it ended. It is a long-lived Hadoop JVM, normally one per YARN
+worker, started and stopped by the cluster&#39;s service manager. The
+<a href="resource-manager.html">ResourceManager</a> monitors its heartbeats; the NM monitors
+its own disks and container processes. It does not assign itself work or run
+the Spark task scheduler.</p>
+<h2 id="flow-at-a-glance">Flow at a glance</h2>
+<ol>
+<li><strong>NodeManager</strong>: Accepts a valid executor start request for its node.</li>
+<li><strong>Localizer</strong>: Fails to fetch a required file from staging.</li>
+<li><strong>NodeManager</strong>: Reports the failed container to the ResourceManager on a heartbeat.</li>
+</ol>
+<blockquote>
+<p><strong>Watch for:</strong> If localization fails, the executor never starts. Check the NodeManager&#39;s localizer log rather than the executor&#39;s stderr.</p>
+</blockquote>
+<details>
+<summary>Show the animated flow</summary>
+
+<p><img src="visuals/node-manager.svg" alt="The NodeManager accepts the launch, fails to localize a staged file and reports the container failure before the executor starts."></p>
+</details>
+
+<h2 id="inputs-outputs-and-local-state">Inputs, outputs, and local state</h2>
+<table>
+<thead>
+<tr>
+<th>Boundary</th>
+<th>Input</th>
+<th>Output or state change</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>NM to RM: <code>ResourceTracker</code></td>
+<td>On startup, <code>NodeStatusUpdaterImpl</code> registers its node ID, resources, and HTTP port. Later it sends health and container statuses on <code>nodeHeartbeat</code>.</td>
+<td>The RM learns which worker is available. Heartbeat responses may carry cleanup IDs or a resync instruction. The HTTP port is not the NM&#39;s launch RPC address.</td>
+</tr>
+<tr>
+<td>RM or AM to NM: <code>ContainerManagementProtocol</code></td>
+<td><code>startContainers</code> carries a container token and <code>ContainerLaunchContext</code> per start. The latter holds commands, local resource descriptors, environment, and credentials. The RM is the caller for the managed AM; the AM is the caller for executors.</td>
+<td><code>ContainerManagerImpl</code> checks caller authorization and the grant, including its node and expiry. It enqueues local initialization; the response lists successful requests and per-container failures, or the RPC itself can fail. Success is not a readiness probe.</td>
+</tr>
+<tr>
+<td>NM to filesystem and OS</td>
+<td>Local resource URI, type, timestamp, and visibility; command and environment; local and log directories</td>
+<td>The localizer reuses eligible cached resources or fetches them, for example from HDFS. The launcher uses a <code>ContainerExecutor</code> to start the process. The NM tracks the container by ID and captures its exit diagnostics.</td>
+</tr>
+<tr>
+<td>AM to NM, or RM via heartbeat</td>
+<td><code>getContainerStatuses</code> or <code>stopContainers</code> by ID; RM cleanup instructions</td>
+<td>The NM returns statuses or schedules termination and cleanup. Final status also travels via NM heartbeat to RM and then on the AM&#39;s allocation heartbeat.</td>
+</tr>
+</tbody></table>
+<p>The NM owns the worker&#39;s localized resources, working directories, and logs,
+not the HDFS replicas on a colocated DataNode. If Spark&#39;s <a href="external-shuffle-service.html">external shuffle
+service</a> is installed as an NM auxiliary service, it can serve local
+shuffle files after an executor exits. It has a separate protocol and listener;
+the container-management RPC never carries shuffle blocks.</p>
+<h2 id="worked-flow-why-an-accepted-start-can-still-fail">Worked flow: why an accepted start can still fail</h2>
+<figure class="source-figure"><a href="../diagrams/components-node-manager-1.svg" title="Open diagram at full size"><img loading="lazy" src="../diagrams/components-node-manager-1.svg" alt="Flowchart for components node manager; open to enlarge"></a><figcaption>Flowchart · <a href="../diagrams/components-node-manager-1.svg">Open full size</a></figcaption><details><summary>Text equivalent</summary><pre>flowchart TD
+    A[Start request at granted NM] --&gt; B{Grant and caller valid?}
+    B --&gt;|No| X[Reject start]
+    B --&gt;|Yes| C[Record container and localize resources]
+    C --&gt;|Missing file or unusable disk| F[Record diagnostics and clean up]
+    C --&gt;|Resources ready| D[Launcher starts the executor JVM]
+    D --&gt; E[Executor contacts the Spark driver]
+    D --&gt;|Exit or enforced limit| F
+    F --&gt; G[Report terminal status to RM]</pre></details></figure>
+<ol>
+<li>In the paid-orders job, Spark&#39;s AM receives a grant for <code>worker-b</code>. Its <code>ExecutorRunnable</code> calls the NM at the grant&#39;s <code>NodeId</code>, with a launch context that names <code>YarnCoarseGrainedExecutorBackend</code>, the driver URL, and the Spark executor ID.</li>
+<li>The NM checks the request and records a node-side container. As each jar or configuration file arrives, <code>ContainerImpl</code> tracks which resources are still pending. It queues the launch only when none remain. A missing staged file can end the container <strong>before Java starts</strong>.</li>
+<li>Once resources are ready, the local launcher starts the JVM. The executor connects to the driver; the NM does not register on its behalf. An executable that exits immediately and a JVM that cannot reach the driver therefore require different evidence.</li>
+<li>The NM tracks process exit and enforces resource limits according to node configuration. For a PySpark workload, child Python processes can contribute to the container&#39;s memory usage. On completion it reports the exit status and diagnostics, cleans up container resources, and handles logs according to retention and aggregation settings.</li>
+</ol>
+<h2 id="diagnose-at-the-last-successful-boundary">Diagnose at the last successful boundary</h2>
+<table>
+<thead>
+<tr>
+<th>Symptom</th>
+<th>What to inspect</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Grant exists, but no executor startup output</td>
+<td>Look up the container ID in the NM daemon/localizer log. Check staging URI, permissions, and <code>yarn.nodemanager.local-dirs</code>; there may be no executor <code>stderr</code> if launch never happened.</td>
+</tr>
+<tr>
+<td>JVM starts, but no Spark tasks arrive</td>
+<td>Read that container&#39;s <code>stderr</code> for driver registration errors and compare the advertised driver address with the worker&#39;s network view. A successful NM start does not establish a Spark RPC connection.</td>
+</tr>
+<tr>
+<td>One worker stops receiving new containers</td>
+<td><code>yarn node -status &lt;node_id&gt;</code> distinguishes an unhealthy report from a lost heartbeat. Check <code>yarn.nodemanager.local-dirs</code> and <code>yarn.nodemanager.log-dirs</code>: the NM can exclude one bad disk without declaring the entire node unhealthy.</td>
+</tr>
+<tr>
+<td>Containers vanish after a worker outage</td>
+<td>The RM can mark the node lost and Spark can replace executors; lost local shuffle files may require recomputation. A daemon restart with NM recovery configured can instead reattach to surviving containers.</td>
+</tr>
+</tbody></table>
+<p>For aggregated logs use <code>yarn logs -applicationId &lt;app_id&gt;</code> when aggregation
+is enabled; otherwise consult the worker&#39;s retained logs. Neither is the Spark
+event log.</p>
+<h2 id="sources">Sources</h2>
+<ul>
+<li>Hadoop 3.4.1: <a href="https://hadoop.apache.org/docs/r3.4.1/hadoop-yarn/hadoop-yarn-site/NodeManager.html">NM health checks, restart, and auxiliary services</a> and <a href="https://hadoop.apache.org/docs/r3.4.1/hadoop-yarn/hadoop-yarn-site/WritingYarnApplications.html">YARN application launch contracts</a>.</li>
+<li>Hadoop 3.4.1 source: <a href="https://github.com/apache/hadoop/blob/4d7825309348956336b8f06a08322b78422849b1/hadoop-yarn-project/hadoop-yarn/hadoop-yarn-server/hadoop-yarn-server-nodemanager/src/main/java/org/apache/hadoop/yarn/server/nodemanager/containermanager/ContainerManagerImpl.java#L927-L1051"><code>ContainerManagerImpl</code> start validation and response</a> and <a href="https://github.com/apache/hadoop/blob/4d7825309348956336b8f06a08322b78422849b1/hadoop-yarn-project/hadoop-yarn/hadoop-yarn-server/hadoop-yarn-server-nodemanager/src/main/java/org/apache/hadoop/yarn/server/nodemanager/containermanager/container/ContainerImpl.java"><code>ContainerImpl</code> localization and launch transitions</a>.</li>
+<li>Spark integration: <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/deploy/yarn/ExecutorRunnable.scala#L92-L123"><code>ExecutorRunnable</code> builds the context and calls the NM</a>, <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/deploy/yarn/ExecutorRunnable.scala#L195-L211">including the driver URL and executor ID</a>.</li>
+<li>Optional service: <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/common/network-yarn/src/main/java/org/apache/spark/network/yarn/YarnShuffleService.java"><code>YarnShuffleService</code> is an NM auxiliary service, not its container manager</a>.</li>
+</ul>
+</main></html>

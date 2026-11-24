@@ -1,0 +1,151 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>CoarseGrainedSchedulerBackend: the driver's executor ledger · Troubleshoot Spark</title><link rel="stylesheet" href="../style.css"><main class="reader"><nav><a href=".././#map">Diagnostic map</a> · <a href="../guide.html">Lifecycle</a> · <a href="../scenarios.html">Cases</a> · <a href="../components/index.html">Components</a></nav><h1 id="coarsegrainedschedulerbackend-the-driver39s-executor-ledger">CoarseGrainedSchedulerBackend: the driver&#39;s executor ledger</h1>
+<p><a href="index.html">component index</a> · Driver JVM, executor-facing endpoint · Apache Spark <code>dada2a6</code></p>
+<h2 id="overview">Overview</h2>
+<p><code>CoarseGrainedSchedulerBackend.DriverEndpoint</code> knows <strong>which executor can
+receive a launch and which of its advertised resources are free</strong>. It turns
+those resources into offers to <a href="task-scheduler.html">TaskSchedulerImpl</a>, then
+sends the returned task descriptions to executors. Executors outlive individual
+tasks: completing a task returns <strong>Spark scheduling capacity on that executor</strong>,
+not memory or vcores to YARN. The <a href="yarn-scheduler-backend.html">YARN adapter</a>
+handles executor-count requests separately.</p>
+<h2 id="flow-at-a-glance">Flow at a glance</h2>
+<ol>
+<li><strong>Registration</strong>: The driver records executor 3 with two cores but zero free.</li>
+<li><strong>Executor ready</strong>: A launch acknowledgement lets the driver offer both cores.</li>
+<li><strong>Task 41</strong>: Uses one core until the driver receives its finish report.</li>
+</ol>
+<blockquote>
+<p><strong>Key distinction:</strong> A finished task frees a Spark slot, not the executor&#39;s YARN container.</p>
+</blockquote>
+<details>
+<summary>Show the animated flow</summary>
+
+<p><img src="visuals/driver-scheduler-backend.svg" alt="Executor 3 goes from zero free cores to two, uses one for task 41, then gets it back"></p>
+</details>
+
+<h2 id="requirements-analysis">Requirements analysis</h2>
+<p>Do not assign work to an uninitialized, removed, or decommissioning executor.
+Track CPU and custom resource addresses across many launches; keep registration,
+launch and terminal status distinct. Report executor loss so higher layers can
+decide whether to retry tasks or stages. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/cluster/CoarseGrainedSchedulerBackend.scala#L56-L108">Registry and counters</a> ·
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/cluster/CoarseGrainedSchedulerBackend.scala#L921-L927">active predicate</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/cluster/CoarseGrainedSchedulerBackend.scala#L178-L215">terminal update</a>.</p>
+<h2 id="component-architecture-and-lifetime">Component architecture and lifetime</h2>
+<p><code>YarnClusterManager</code> creates a client- or cluster-mode backend derived from
+this class. During <strong>construction</strong>, the base backend registers
+<code>createDriverEndpoint()</code> under the RPC name <code>CoarseGrainedScheduler</code>; on YARN
+the factory returns a <code>YarnDriverEndpoint</code>. This is not the endpoint named
+<code>YarnScheduler</code> that talks to the AM. The driver endpoint&#39;s <code>onStart</code> schedules
+periodic <code>ReviveOffers</code> messages. The backend&#39;s separate <code>start()</code> initializes
+credential managers. On normal scheduler shutdown it stops the timers, asks
+<code>StopExecutors</code> (fan-out <code>StopExecutor</code>), then asks <code>StopDriver</code> to stop the
+endpoint. An acknowledgement of the fan-out is not proof that every remote
+process has exited. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/scheduler/cluster/YarnClusterManager.scala#L40-L55">YARN factory</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/cluster/CoarseGrainedSchedulerBackend.scala#L565-L571">endpoint construction</a> ·
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/cluster/CoarseGrainedSchedulerBackend.scala#L1301-L1303">name</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/scheduler/cluster/YarnSchedulerBackend.scala#L251-L296">YARN override</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/cluster/CoarseGrainedSchedulerBackend.scala#L154-L175">timer</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/cluster/CoarseGrainedSchedulerBackend.scala#L665-L720">start/stop</a> ·
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/cluster/CoarseGrainedSchedulerBackend.scala#L350-L369">stop handlers</a>.</p>
+<h2 id="data-models-and-concurrency">Data models and concurrency</h2>
+<table>
+<thead>
+<tr>
+<th>Driver state</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>executorDataMap(executorId): ExecutorData</code></td>
+<td>RPC ref/address, hostname, integer <code>totalCores</code>, exact decimal <code>freeCores</code>, named resource addresses, profile ID and timestamps. <code>addressToExecutorId</code> supports disconnect lookup. An executor ID is not a task ID or YARN container ID.</td>
+</tr>
+<tr>
+<td><code>totalCoreCount</code>, <code>totalRegisteredExecutors</code></td>
+<td>Atomic totals across registered executors. <code>totalCoreCount</code> does <strong>not</strong> fall when a task starts; that task debits its executor&#39;s <code>freeCores</code>.</td>
+</tr>
+<tr>
+<td>Pending removal, loss-reason and decommission sets</td>
+<td>An executor can still have a registry record while excluded from future offers. Final removal drops metadata and totals and notifies the scheduler and listener bus.</td>
+</tr>
+</tbody></table>
+<p><code>DriverEndpoint</code> uses an isolated RPC endpoint with one delivery thread. The
+backend monitor also protects registry changes visible to non-endpoint callers.
+Where both scheduler and backend state are needed, <code>withLock</code> acquires the
+scheduler monitor <strong>then</strong> the backend monitor. This serializes the offer
+decision with changes such as an idle-executor removal. <code>launchTasks</code> runs
+after that joint lock is released. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/cluster/CoarseGrainedSchedulerBackend.scala#L402-L455">Offer and launch order</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/cluster/ExecutorData.scala#L24-L52">ExecutorData</a> ·
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/cluster/CoarseGrainedSchedulerBackend.scala#L56-L108">registry</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/rpc/RpcEndpoint.scala#L165-L177">single-thread contract</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/cluster/CoarseGrainedSchedulerBackend.scala#L1282-L1287">ordered locks</a> ·
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/cluster/CoarseGrainedSchedulerBackend.scala#L490-L540">removal</a>.</p>
+<h2 id="design-patterns-used">Design patterns used</h2>
+<p><strong>Factory Method (creational).</strong> The base class installs the endpoint through
+<code>createDriverEndpoint</code> instead of constructing one fixed implementation. YARN
+overrides the disconnected-executor behavior to ask the AM <em>why</em> an executor
+exited, while inheriting the same register/launch/status protocol. A separate
+implementation of that whole protocol per cluster manager would duplicate the
+resource ledger; the trade-off is that the concrete disconnect behavior cannot
+be inferred from the base class alone. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/cluster/CoarseGrainedSchedulerBackend.scala#L665-L720">Base factory</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/scheduler/cluster/YarnSchedulerBackend.scala#L251-L296">override</a>.</p>
+<h2 id="apiinterface-definitions">API/interface definitions</h2>
+<table>
+<thead>
+<tr>
+<th>Message/caller</th>
+<th>Driver action and output</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Executor → <code>RegisterExecutor(id, ref, hostname, cores, ..., resources, resourceProfileId)</code> (ask)</td>
+<td>Rejects duplicate IDs or excluded placements; otherwise records the endpoint with <strong>zero free cores</strong>, increments registration totals, posts <code>SparkListenerExecutorAdded</code> and replies <code>true</code>. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/cluster/CoarseGrainedSchedulerBackend.scala#L263-L294">Register</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/cluster/CoarseGrainedSchedulerBackend.scala#L310-L348">insert and reply</a></td>
+</tr>
+<tr>
+<td>Executor → <code>LaunchedExecutor(id)</code>; scheduler/timer → <code>ReviveOffers</code> (send)</td>
+<td>Launch acknowledgement initializes <code>freeCores</code> from <code>totalCores</code> and makes a single-executor offer. Revival builds <code>WorkerOffer</code>s for all active executors. These are local scheduler calls, <strong>not</strong> RM offers. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/cluster/CoarseGrainedSchedulerBackend.scala#L237-L252">Launched handler</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/cluster/CoarseGrainedSchedulerBackend.scala#L402-L455">offer construction</a></td>
+</tr>
+<tr>
+<td>Scheduler → descriptions; executor → <code>StatusUpdate(id, tid, state, data, taskCpus, resources)</code></td>
+<td>Backend encodes descriptions and sends <code>LaunchTask</code> to each selected RPC ref. It forwards status/payload to <code>scheduler.statusUpdate</code>; only a terminal state on a known executor returns CPU/address amounts and triggers another offer. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/cluster/CoarseGrainedSchedulerBackend.scala#L457-L487">Send</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/executor/CoarseGrainedExecutorBackend.scala#L273-L284">status sender</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/cluster/CoarseGrainedSchedulerBackend.scala#L178-L215">status handler</a></td>
+</tr>
+<tr>
+<td>Scheduler → <code>killTask(tid, executorId, interruptThread, reason)</code></td>
+<td>Sends a <code>KillTask</code> to the driver endpoint, which forwards it if the executor is known. Sending a kill does not credit the slot; the terminal-status or executor-removal path accounts for it. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/cluster/CoarseGrainedSchedulerBackend.scala#L760-L768">Public entry</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/cluster/CoarseGrainedSchedulerBackend.scala#L178-L215">forward</a></td>
+</tr>
+</tbody></table>
+<h2 id="implementation-notes-a-two-core-executor-registers-and-runs-one-task">Implementation notes: a two-core executor registers and runs one task</h2>
+<figure class="source-figure"><a href="../diagrams/components-driver-scheduler-backend-1.svg" title="Open diagram at full size"><img loading="lazy" src="../diagrams/components-driver-scheduler-backend-1.svg" alt="Sequence diagram for components driver scheduler backend; open to enlarge"></a><figcaption>Sequence diagram · <a href="../diagrams/components-driver-scheduler-backend-1.svg">Open full size</a></figcaption><details><summary>Text equivalent</summary><pre>sequenceDiagram
+    participant E as Executor backend
+    participant D as DriverEndpoint
+    participant S as TaskSchedulerImpl
+    E-&gt;&gt;D: RegisterExecutor(id=3, cores=2)
+    D--&gt;&gt;E: true (registered, free=0)
+    E-&gt;&gt;D: LaunchedExecutor(3)
+    D-&gt;&gt;S: resourceOffers(executor 3, free=2)
+    S--&gt;&gt;D: TaskDescription(TID 41, executor 3, cpus=1)
+    D-&gt;&gt;E: LaunchTask (free=1)
+    E-&gt;&gt;D: StatusUpdate(41, RUNNING)
+    D-&gt;&gt;S: statusUpdate(41, RUNNING)
+    E-&gt;&gt;D: StatusUpdate(41, FINISHED, cpus=1)
+    D-&gt;&gt;S: statusUpdate(41, FINISHED)
+    D-&gt;&gt;S: resourceOffers(executor 3, free=2)</pre></details></figure>
+<p>The example assumes no other tasks. The <a href="executor-backend.html">executor backend</a> constructs its <code>Executor</code>
+<em>between</em> registry acceptance and <code>LaunchedExecutor</code>. The driver reserves the
+description&#39;s CPU and named address amounts <strong>before</strong> sending the launch.
+The executor echoes those same assignments from the running task description
+in its status update. <code>RUNNING</code> confirms launch; it does not release anything.
+The new offer after <code>FINISHED</code> does not wait for result decoding or stage
+completion. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/executor/CoarseGrainedExecutorBackend.scala#L168-L196">Executor initialization</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/cluster/CoarseGrainedSchedulerBackend.scala#L457-L487">debit at launch</a> ·
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/cluster/CoarseGrainedSchedulerBackend.scala#L178-L215">return of resources</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/TaskSchedulerImpl.scala#L865-L891">asynchronous result handling</a>.</p>
+<p><strong>Loss, cancellation and late status.</strong> Base <code>onDisconnected</code> removes a known
+executor with <code>ExecutorProcessLost</code>. On YARN the override can instead call
+<code>disableExecutor</code>, stop offers immediately, report <code>LossReasonPending</code>, then
+deliver <code>RemoveExecutor</code> when the AM answers. Final removal distinguishes a
+driver-requested kill or decommission from another loss. A late terminal
+status for an already-removed executor is forwarded to the scheduler, but
+there is no ledger entry to credit or offer. No <code>LaunchTask</code> retry is initiated
+by that late message; retry policy lives above this endpoint.
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/cluster/CoarseGrainedSchedulerBackend.scala#L402-L455">Base disconnect</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/cluster/CoarseGrainedSchedulerBackend.scala#L543-L567">disable</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/cluster/CoarseGrainedSchedulerBackend.scala#L490-L540">final removal</a> ·
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/cluster/CoarseGrainedSchedulerBackend.scala#L178-L215">unknown executor</a>.</p>
+<h2 id="scalability-and-performance-considerations">Scalability and performance considerations</h2>
+<p><code>makeOffers(executorId)</code> targets just the freed executor, while periodic all-executor
+rounds let locality-delayed work be reconsidered even if no task finishes.
+Encoding large task descriptions also uses driver time. <strong>Diagnostic:</strong> if the
+encoded launch is <strong>at least</strong> <code>spark.rpc.message.maxSize</code> in bytes after unit
+conversion, the backend aborts the manager rather than debit resources and
+send it. The driver&#39;s serialized-task-size error alongside no corresponding
+executor <code>Got assigned task</code> is a launch-path problem, not a YARN allocation
+timeout. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/cluster/CoarseGrainedSchedulerBackend.scala#L402-L455">Offer scopes</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/cluster/CoarseGrainedSchedulerBackend.scala#L457-L487">size guard and launch</a> ·
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/executor/CoarseGrainedExecutorBackend.scala#L168-L196">executor receive</a>.</p>
+</main></html>

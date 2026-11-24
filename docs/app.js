@@ -1,70 +1,113 @@
-const $ = id => document.getElementById(id);
-// Short labels for the three source-traced steps. The full explanation always remains available.
-const labels = [
- ['Check capacity','Add overhead','Reject request'],['Start Python','Await context','Time out'],['Grant container','Call driver','Registration stalls'],['Lose connection','Classify exit','Clean containers'],
- ['Observe backlog','Raise target','Register capacity'],['Track idleness','Check eligibility','Remove executor'],['Request partition','Look up block','Read or rebuild'],['Plan predicate','Evaluate batch','Attach results'],
- ['Select build side','Broadcast relation','Probe locally'],['Measure skew','Split reads','Schedule pairs'],['Fetch fails','Invalidate output','Rebuild and retry'],['Report exception','Count failures','Abort task set'],
- ['Flag straggler','Launch sibling','Accept winner'],['Check last seen','Expire executor','Reschedule work'],['Reclaim container','Classify loss','Retry task'],['Enforce limit','Classify memory kill','Replace executor'],
- ['Serialize results','Count bytes','Abort collection'],['Commit tasks','Commit job','Abort on error'],['Match job group','Cancel stages','Keep context'],['Attempt lost','Allocate new AM','Re-enter script'],
- ['Package JARs','Stage archive','Reuse distribution'],['Submit app','Read one report','Continue on YARN'],['Import fails','Register archive','Set worker path'],['Start worker','Compare versions','Reject command'],
- ['Serialize closure','Reject context','Capture value'],['Request partition','Serve records','Stop or continue'],['Scan first split','Expand search','Return sample'],['Require all rows','Single task','Consider keyed ranks'],
- ['Pack values','Merge partials','Reduce by key'],['Narrow dependency','One busy task','Compare shuffle'],['Mark checkpoint','Write partitions','Cut lineage'],['Request memory','Spill locally','Report metrics'],
- ['Evict copies','Destroy handle','Reject reuse'],['Read map stats','Group partitions','Launch readers'],['Analyze filters','Prune index','Scan fewer files'],['Request INT','Reject conversion','Isolate batch'],
- ['Open split','Classify exception','Skip or fail'],['Check path','Apply save mode','Skip insertion'],['Plan overwrite','Stage touched paths','Replace dates'],['Set file limit','Roll writer','Commit files']
-];
-const shapes=[
- '<path d="M4 10 20 4l16 6-16 7zM4 10v17l16 9 16-9V10M20 17v19"/><path d="m10 19 5 3"/>',
- '<rect x="5" y="7" width="30" height="10" rx="2"/><rect x="5" y="23" width="30" height="10" rx="2"/><path d="M10 12h1m4 0h5m-10 16h1m4 0h5"/>',
- '<path d="M6 20h9m9-10h9m-9 20h9M15 20c5 0 4-10 9-10m-9 10c5 0 4 10 9 10"/><circle cx="5" cy="20" r="2"/><circle cx="35" cy="10" r="2"/><circle cx="35" cy="30" r="2"/>'
-];
-let data=[],current,step=0,timer=0,tab='clue';
-const plain=s=>{const t=document.createElement('template');t.innerHTML=s;return t.content.textContent};
-const el=(name,text)=>{const x=document.createElement(name);if(text!==undefined)x.textContent=text;return x};
-function stop(){clearInterval(timer);timer=0;$('play').textContent='▶ Play trace';}
-function showStep(i){
-  step=i;[...$('nodes').children].forEach((b,j)=>b.setAttribute('aria-pressed',String(i===j)));
-  $('explain').innerHTML=current.steps[i];$('phase').textContent=labels[Number(current.id)-1][i];
-  $('counter').textContent=`Step ${i+1} / 3`;$('prev').disabled=i===0;$('next').disabled=i===2;
-}
-function notes(key){
-  tab=key;document.querySelectorAll('[data-tab]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.tab===key)));
-  $('noteTitle').textContent=({clue:'What to look for',repro:'Try it safely',fix:'Resolution and verification'})[key];
-  $('note').innerHTML=current[key];
-}
+import {drawFork,inspectRoute,pathToCase} from './triage.js';
+import {createReplay} from './replay.js';
+import {initInvestigations} from './investigate.js';
+
+const $=id=>document.getElementById(id);
+const node=(tag,text)=>{const n=document.createElement(tag);if(text!=null)n.textContent=text;return n};
+const anchor=(text,href)=>{const a=node('a',text);a.href=href;return a};
+const plain=html=>{const t=node('template');t.innerHTML=html;return t.content.textContent.trim()};
+const replay=createReplay($('topology'),{
+  prev:$('prev'),play:$('play'),next:$('next'),jump:$('jump'),objects:$('objects'),speed:$('speed'),meter:$('meter'),kind:$('kind'),
+  phase:$('phase'),direction:$('direction'),state:$('state'),explain:$('explain'),scrub:$('scrub'),counter:$('counter')
+});
+let cases=[],knowledge,investigations,current=null,mapRoute=null,tab='clue',pane='trace';
 function catalog(){
   const q=$('search').value.trim().toLowerCase(),g=$('group').value;
-  const rows=data.filter(c=>(!g||c.section===g)&&(!q||c.haystack.includes(q)));
-  $('available').textContent=`${rows.length} of ${data.length} cases`;$('list').replaceChildren();
-  for(const c of rows){const a=el('a');a.href=`#case-${c.id}`;a.setAttribute('aria-current',String(current?.id===c.id));a.append(el('span',c.id),el('b',c.title));$('list').append(a);}
-  if(!rows.length){const p=el('p','No cases match. Try a component such as “executor”, or clear the filters.');p.className='empty';const b=el('button','Clear filters');b.onclick=()=>{$('search').value='';$('group').value='';catalog();$('search').focus()};$('list').append(p,b);}
+  const rows=cases.filter(c=>(!g||c.section===g)&&(!q||c.search.includes(q)));
+  $('available').textContent=`${rows.length} of ${cases.length} cases`;$('list').replaceChildren();
+  for(const c of rows){
+    const a=anchor('',`#case-${c.id}`);a.setAttribute('aria-current',String(c===current));
+    a.append(node('span',c.id),node('b',c.title));$('list').append(a);
+  }
+  if(!rows.length){
+    const p=node('p','No matches. Try a component such as “executor”.'),b=node('button','Clear filters');
+    b.onclick=()=>{$('search').value='';$('group').value='';catalog();$('search').focus()};$('list').append(p,b);
+  }
 }
-function openCase(){
-  stop();const wanted=location.hash.match(/^#case-(\d{2})$/)?.[1]??'11';
-  current=data.find(c=>c.id===wanted)??data[10];const i=Number(current.id)-1;
-  document.title=`${current.title} · Troubleshoot Spark`;$('caseNo').textContent=`Case ${current.id}`;$('section').textContent=current.section;
-  $('title').textContent=current.title;$('trigger').innerHTML=current.trigger;$('nodes').replaceChildren();
-  const figure=({'11':['shuffle-recovery','Failed fetch, invalidated output, map rebuild, then successful retry.'],'20':['am-restart','Lost AM container, a new YARN attempt, then script re-entry.'],'36':['parquet-mismatch','Requested and stored types disagree; read natively and normalize the batch.']})[current.id];
-  $('recovery').hidden=!figure;$('recovery').open=false;
-  if(figure){$('figure').src=`pyspark-yarn-media/${figure[0]}.svg`;$('figure').alt=figure[1]}else{$('figure').removeAttribute('src')}
-  labels[i].forEach((name,j)=>{const b=el('button');b.className='nodestep';b.setAttribute('aria-label',`Step ${j+1}: ${name}`);
-    const icon=el('span');icon.className='chip';icon.innerHTML=`<svg viewBox="0 0 40 40" aria-hidden="true">${shapes[j]}</svg>`;b.append(icon,el('span',name));
-    b.onclick=()=>{stop();showStep(j)};$('nodes').append(b);});
-  $('actors').replaceChildren(...current.route.map(x=>el('li',x)));
-  $('steps').replaceChildren(...current.steps.map(s=>{const l=el('li');l.innerHTML=s;return l}));
-  $('sources').replaceChildren(...current.links.map(link=>{const l=el('li'),a=el('a',link.label);a.href=link.url;l.append(a);return l}));
-  $('previousCase').disabled=!i;$('nextCase').disabled=i===data.length-1;showStep(0);notes(tab);catalog();
+function noteView(key){
+  tab=key;
+  document.querySelectorAll('[data-tab]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.tab===key)));
+  $('note-title').textContent=({clue:'What to look for',repro:'Try it safely',fix:'Resolution and verification'})[key];
+  $('note').innerHTML=current[key];
+}
+function redraw(){
+  if(mapRoute)drawFork($('fork'),mapRoute.question,mapRoute.choices);
+  else if(current&&pane==='decision'){
+    const d=current.decision;
+    drawFork($('decision-chart'),d.question,[{badge:'YES',name:d.yes},{badge:'NO',name:d.no}],{small:true});
+  }
+}
+function showPane(key){
+  pane=key;if(key!=='trace')replay.pause();
+  for(const name of ['trace','decision','full'])$(`${name}-pane`).hidden=key!==name;
+  document.querySelectorAll('[data-pane]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.pane===key)));
+  redraw();
+}
+function render(){
+  const hash=location.hash.slice(1)||'map';
+  const c=cases.find(x=>'case-'+x.id===hash);
+  const candidate=hash.startsWith('errors/')?hash.slice(7):'';
+  const diagnosis=candidate&&knowledge.records.find(d=>d.id===candidate);
+  const which=c?'case':diagnosis?'investigation':hash==='errors'||candidate?'lookup':hash==='sources'?'coverage':'map';
+  replay.pause(); current=c??null;mapRoute=which==='map'?inspectRoute(hash,knowledge.records):null;
+  for(const id of ['case','map','lookup','investigation','coverage'])$(id).hidden=id!==which;
+  $('way-map').setAttribute('aria-current',String(which==='map'||which==='case'));
+  $('way-errors').setAttribute('aria-current',String(which==='lookup'||which==='investigation'));
+  if(which==='coverage'){
+    document.title='Source coverage · Troubleshoot Spark';investigations.sources();
+  }else if(which==='lookup'){
+    document.title='Error lookup · Troubleshoot Spark';investigations.refresh();
+  }else if(which==='investigation'){
+    document.title=`${diagnosis.title} · Investigation`;investigations.show(diagnosis.id);
+  }else if(which==='map'){
+    document.title=`${mapRoute.name} · Troubleshoot Spark`;
+    $('map-title').textContent=mapRoute.name;$('map-intro').textContent=mapRoute.description;
+    $('crumbs').replaceChildren(...mapRoute.trail.flatMap(([name,url])=>[anchor(name,url),node('span','/')]),node('span',mapRoute.trail.length?'Choose a branch':'PySpark on YARN'));
+    redraw();
+  }else{
+    document.title=`${c.title} · Troubleshoot Spark`;$('case-no').textContent='Case '+c.id;
+    $('case-path').href=pathToCase(c.id);$('case-path').textContent=c.section;
+    $('start-investigation').href=`#errors/case-${c.id}`;
+    $('title').textContent=c.title;$('trigger').innerHTML=c.trigger;
+    $('branch-evidence').innerHTML=c.clue;$('branch-fix').innerHTML=c.fix;
+    $('full-pane').innerHTML=`<h2>Complete case ${c.id}</h2>${c.full}`;
+    $('component-links').replaceChildren(...c.nodes.map(n=>{
+      const li=node('li');li.append(anchor(n.name,`components/${n.reference}.html`),node('small',n.host));return li;
+    }));
+    $('sources').replaceChildren(...c.links.map(l=>{const li=node('li');li.append(anchor(l.label,l.url));return li}));
+    for(const [id,offset] of [['previous-case',-1],['next-case',1]]){
+      const dest=cases[Number(c.id)-1+offset];$(id).hidden=!dest;if(dest)$(id).href='#case-'+dest.id;
+    }
+    $('guide-link').href=`scenarios.html#${c.id}-${c.title.toLowerCase().replace(/[^a-z0-9 -]/g,'').replace(/\s+/g,'-')}`;
+    showPane('trace');replay.load(c);noteView(tab);
+  }
+  if(matchMedia('(max-width:720px)').matches)setCatalog(false);
+  catalog();
+}
+function setCatalog(open){
+  $('catalog-body').classList.toggle('open',open);
+  $('toggle-catalog').setAttribute('aria-expanded',String(open));
+  $('toggle-catalog').textContent=open?'Hide list':'Browse 40 cases';
 }
 async function start(){
-  const response=await fetch('./cases.json');if(!response.ok)throw Error(`HTTP ${response.status}`);data=await response.json();
-  if(data.length!==labels.length)throw Error('Catalog and trace labels differ');
-  for(const c of data)c.haystack=[c.id,c.title,c.section,...c.route,...[c.trigger,c.clue,c.repro,c.fix,...c.steps].map(plain)].join(' ').toLowerCase();
-  for(const name of new Set(data.map(c=>c.section))){const o=el('option',name);o.value=name;$('group').append(o)}
-  $('total').textContent=data.length;$('search').oninput=catalog;$('group').onchange=catalog;
-  document.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>notes(b.dataset.tab));
-  $('prev').onclick=()=>{stop();showStep(step-1)};$('next').onclick=()=>{stop();showStep(step+1)};
-  $('play').onclick=()=>{if(timer){stop();return}if(step===2)showStep(0);$('play').textContent='Ⅱ Pause trace';timer=setInterval(()=>{showStep(step+1);if(step===2)stop()},2800)};
-  $('previousCase').onclick=()=>{location.hash=`case-${data[Number(current.id)-2].id}`};$('nextCase').onclick=()=>{location.hash=`case-${data[Number(current.id)].id}`};
-  window.addEventListener('hashchange',openCase);document.addEventListener('visibilitychange',()=>{if(document.hidden)stop()});
-  openCase();$('load').hidden=true;$('content').hidden=false;
+  [cases,knowledge]=await Promise.all(['cases.json','knowledge.json'].map(async name=>{
+    const res=await fetch(`./${name}?edition=diagnostics-2`);if(!res.ok)throw Error(`${name}: HTTP ${res.status}`);return res.json();
+  }));
+  investigations=initInvestigations(knowledge,cases);
+  for(const c of cases)c.search=[c.id,c.title,c.section,plain(c.full),...c.nodes.map(n=>n.name),
+    ...c.events.map(e=>[e.label,e.state,e.detail].join(' '))].join(' ').toLowerCase();
+  for(const name of new Set(cases.map(c=>c.section))){const o=node('option',name);o.value=name;$('group').append(o)}
+  $('search').oninput=catalog;$('group').onchange=catalog;
+  $('toggle-catalog').onclick=()=>setCatalog($('toggle-catalog').getAttribute('aria-expanded')!=='true');
+  $('skip').onclick=e=>{e.preventDefault();$('workspace').focus()};
+  document.querySelectorAll('[data-pane]').forEach(b=>b.onclick=()=>showPane(b.dataset.pane));
+  document.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>noteView(b.dataset.tab));
+  window.addEventListener('hashchange',()=>{render();window.scrollTo(0,0);$('workspace').focus({preventScroll:true})});
+  let prevWidth=0;
+  new ResizeObserver(entries=>{
+    const width=entries[0].contentRect.width;
+    if(prevWidth!==width){prevWidth=width;redraw()}
+  }).observe($('workspace'));
+  $('load').hidden=true;render();
 }
-start().catch(err=>{$('load').textContent=`Could not load the scenario catalog (${err.message}). Reload this page, or open All scenarios above.`;});
+start().catch(e=>{$('load').hidden=false;$('load').textContent=`Could not open the explorer (${e.message}). Reload or use the Field guide above.`});

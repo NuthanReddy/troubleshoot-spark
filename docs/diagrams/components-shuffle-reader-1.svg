@@ -1,0 +1,100 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1167.426 572" width="1167.426" height="572" style="--bg:#101d2e;--fg:#ecf3f8;--line:#839ab5;--accent:#93e3d1;background:var(--bg)">
+<style>
+  text { font-family: 'system-ui', system-ui, sans-serif; }
+  svg {
+    /* Derived from --bg and --fg (overridable via --line, --accent, etc.) */
+    --_text:          var(--fg);
+    --_text-sec:      var(--muted, color-mix(in srgb, var(--fg) 60%, var(--bg)));
+    --_text-muted:    var(--muted, color-mix(in srgb, var(--fg) 40%, var(--bg)));
+    --_text-faint:    color-mix(in srgb, var(--fg) 25%, var(--bg));
+    --_line:          var(--line, color-mix(in srgb, var(--fg) 50%, var(--bg)));
+    --_arrow:         var(--accent, color-mix(in srgb, var(--fg) 85%, var(--bg)));
+    --_node-fill:     var(--surface, color-mix(in srgb, var(--fg) 3%, var(--bg)));
+    --_node-stroke:   var(--border, color-mix(in srgb, var(--fg) 20%, var(--bg)));
+    --_group-fill:    var(--bg);
+    --_group-hdr:     color-mix(in srgb, var(--fg) 5%, var(--bg));
+    --_inner-stroke:  color-mix(in srgb, var(--fg) 12%, var(--bg));
+    --_key-badge:     color-mix(in srgb, var(--fg) 10%, var(--bg));
+  }
+</style>
+<defs>
+  <marker id="seq-arrow" markerWidth="8" markerHeight="5" refX="8" refY="2.5" orient="auto-start-reverse">
+    <polygon points="0 0, 8 2.5, 0 5" fill="var(--_arrow)" />
+  </marker>
+  <marker id="seq-arrow-open" markerWidth="8" markerHeight="5" refX="8" refY="2.5" orient="auto-start-reverse">
+    <polyline points="0 0, 8 2.5, 0 5" fill="none" stroke="var(--_arrow)" stroke-width="1" />
+  </marker>
+</defs>
+<g class="block" data-type="alt" data-label="Same executor or eligible host-local disk">
+  <rect x="392.423" y="158" width="745.0029999999999" height="284" rx="0" ry="0" fill="none" stroke="var(--_node-stroke)" stroke-width="1" />
+  <rect x="392.423" y="158" width="246.66999999999996" height="18" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <text x="398.423" y="167" font-size="11" font-weight="600" fill="var(--_text-sec)" dy="3.8499999999999996">alt [Same executor or eligible host-local disk]</text>
+  <line x1="392.423" y1="274" x2="1137.426" y2="274" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" />
+  <text x="400.423" y="288" font-size="11" text-anchor="start" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">[Remote block]</text>
+</g>
+<line class="lifeline" data-actor="T" x1="83.65450000000001" y1="70" x2="83.65450000000001" y2="542" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" />
+<line class="lifeline" data-actor="R" x1="269.866" y1="70" x2="269.866" y2="542" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" />
+<line class="lifeline" data-actor="F" x1="501.64899999999994" y1="70" x2="501.64899999999994" y2="542" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" />
+<line class="lifeline" data-actor="B" x1="720.0939999999999" y1="70" x2="720.0939999999999" y2="542" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" />
+<line class="lifeline" data-actor="S" x1="983.3694999999999" y1="70" x2="983.3694999999999" y2="542" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" />
+<g class="message" data-from="T" data-to="R" data-label="read()" data-line-style="solid" data-arrow-head="filled" data-self="false">
+  <line x1="83.65450000000001" y1="90" x2="269.866" y2="90" stroke="var(--_line)" stroke-width="1" marker-end="url(#seq-arrow)" />
+  <text x="176.76024999999998" y="80" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">read()</text>
+</g>
+<g class="message" data-from="R" data-to="F" data-label="Address groups, limits, stream wrapper, metrics" data-line-style="solid" data-arrow-head="filled" data-self="false">
+  <line x1="269.866" y1="130" x2="501.64899999999994" y2="130" stroke="var(--_line)" stroke-width="1" marker-end="url(#seq-arrow)" />
+  <text x="385.75749999999994" y="120" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">Address groups, limits, stream wrapper, metrics</text>
+</g>
+<g class="message" data-from="F" data-to="B" data-label="getLocalBlockData or getHostLocalShuffleData" data-line-style="solid" data-arrow-head="filled" data-self="false">
+  <line x1="501.64899999999994" y1="198" x2="720.0939999999999" y2="198" stroke="var(--_line)" stroke-width="1" marker-end="url(#seq-arrow)" />
+  <text x="610.8715" y="188" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">getLocalBlockData or getHostLocalShuffleData</text>
+</g>
+<g class="message" data-from="B" data-to="F" data-label="Managed buffer for file segment" data-line-style="dashed" data-arrow-head="filled" data-self="false">
+  <line x1="720.0939999999999" y1="238" x2="501.64899999999994" y2="238" stroke="var(--_line)" stroke-width="1" stroke-dasharray="6 4" marker-end="url(#seq-arrow)" />
+  <text x="610.8715" y="228" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">Managed buffer for file segment</text>
+</g>
+<g class="message" data-from="F" data-to="S" data-label="Open blocks through blockStoreClient" data-line-style="solid" data-arrow-head="filled" data-self="false">
+  <line x1="501.64899999999994" y1="302" x2="983.3694999999999" y2="302" stroke="var(--_line)" stroke-width="1" marker-end="url(#seq-arrow)" />
+  <text x="742.50925" y="292" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">Open blocks through blockStoreClient</text>
+</g>
+<g class="message" data-from="S" data-to="F" data-label="Stream handle" data-line-style="dashed" data-arrow-head="filled" data-self="false">
+  <line x1="983.3694999999999" y1="342" x2="501.64899999999994" y2="342" stroke="var(--_line)" stroke-width="1" stroke-dasharray="6 4" marker-end="url(#seq-arrow)" />
+  <text x="742.50925" y="332" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">Stream handle</text>
+</g>
+<g class="message" data-from="F" data-to="S" data-label="Request chunks by stream ID" data-line-style="solid" data-arrow-head="filled" data-self="false">
+  <line x1="501.64899999999994" y1="382" x2="983.3694999999999" y2="382" stroke="var(--_line)" stroke-width="1" marker-end="url(#seq-arrow)" />
+  <text x="742.50925" y="372" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">Request chunks by stream ID</text>
+</g>
+<g class="message" data-from="S" data-to="F" data-label="Shuffle bytes" data-line-style="dashed" data-arrow-head="filled" data-self="false">
+  <line x1="983.3694999999999" y1="422" x2="501.64899999999994" y2="422" stroke="var(--_line)" stroke-width="1" stroke-dasharray="6 4" marker-end="url(#seq-arrow)" />
+  <text x="742.50925" y="412" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">Shuffle bytes</text>
+</g>
+<g class="message" data-from="F" data-to="R" data-label="Block ID and input stream" data-line-style="dashed" data-arrow-head="filled" data-self="false">
+  <line x1="501.64899999999994" y1="462" x2="269.866" y2="462" stroke="var(--_line)" stroke-width="1" stroke-dasharray="6 4" marker-end="url(#seq-arrow)" />
+  <text x="385.75749999999994" y="452" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">Block ID and input stream</text>
+</g>
+<g class="message" data-from="R" data-to="T" data-label="Iterator of decoded records or combiners" data-line-style="dashed" data-arrow-head="filled" data-self="false">
+  <line x1="269.866" y1="502" x2="83.65450000000001" y2="502" stroke="var(--_line)" stroke-width="1" stroke-dasharray="6 4" marker-end="url(#seq-arrow)" />
+  <text x="176.76024999999998" y="492" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">Iterator of decoded records or combiners</text>
+</g>
+<g class="actor" data-id="T" data-label="Reduce task" data-type="participant">
+  <rect x="30.000000000000007" y="30" width="107.30900000000001" height="40" rx="4" ry="4" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <text x="83.65450000000001" y="50" font-size="13" text-anchor="middle" font-weight="500" fill="var(--_text)" dy="4.55">Reduce task</text>
+</g>
+<g class="actor" data-id="R" data-label="BlockStoreShuffleReader" data-type="participant">
+  <rect x="177.30899999999997" y="30" width="185.114" height="40" rx="4" ry="4" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <text x="269.866" y="50" font-size="13" text-anchor="middle" font-weight="500" fill="var(--_text)" dy="4.55">BlockStoreShuffleReader</text>
+</g>
+<g class="actor" data-id="F" data-label="ShuffleBlockFetcherIterator" data-type="participant">
+  <rect x="402.423" y="30" width="198.45199999999994" height="40" rx="4" ry="4" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <text x="501.64899999999994" y="50" font-size="13" text-anchor="middle" font-weight="500" fill="var(--_text)" dy="4.55">ShuffleBlockFetcherIterator</text>
+</g>
+<g class="actor" data-id="B" data-label="Local BlockManager" data-type="participant">
+  <rect x="640.875" y="30" width="158.438" height="40" rx="4" ry="4" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <text x="720.0939999999999" y="50" font-size="13" text-anchor="middle" font-weight="500" fill="var(--_text)" dy="4.55">Local BlockManager</text>
+</g>
+<g class="actor" data-id="S" data-label="Remote executor or external shuffle service" data-type="participant">
+  <rect x="839.3129999999999" y="30" width="288.11299999999994" height="40" rx="4" ry="4" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <text x="983.3694999999999" y="50" font-size="13" text-anchor="middle" font-weight="500" fill="var(--_text)" dy="4.55">Remote executor or external shuffle service</text>
+</g>
+</svg>

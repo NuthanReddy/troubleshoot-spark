@@ -1,0 +1,101 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Adaptive Query Execution: changing the unread part of a query · Troubleshoot Spark</title><link rel="stylesheet" href="../style.css"><main class="reader"><nav><a href=".././#map">Diagnostic map</a> · <a href="../guide.html">Lifecycle</a> · <a href="../scenarios.html">Cases</a> · <a href="../components/index.html">Components</a></nav><h1 id="adaptive-query-execution-changing-the-unread-part-of-a-query">Adaptive Query Execution: changing the unread part of a query</h1>
+<p><a href="index.html">component index</a> | <a href="sql-planner.html">SQL physical planner</a></p>
+<p>AQE lets the <strong>driver JVM</strong> revise a physical plan after learning what an exchange
+actually produced. It changes the <em>next</em> join or shuffle read; it does not migrate
+a running task, split a live reducer, or acquire YARN containers. An AQE <strong>query
+stage</strong> wraps a SQL subtree that can be materialized. The core
+<a href="dag-scheduler.html">DAGScheduler</a> still owns jobs, scheduler stages, task attempts,
+and recovery of missing shuffle outputs.</p>
+<h2 id="flow-at-a-glance">Flow at a glance</h2>
+<ol>
+<li><strong>Finished shuffle</strong>: Map tasks write the shuffle blocks for both sides of a join.</li>
+<li><strong>Driver</strong>: AQE spots an oversized orders partition and splits its next read into slices.</li>
+<li><strong>Join tasks</strong>: Each task for that partition reads a different slice but the same regions partition.</li>
+</ol>
+<blockquote>
+<p><strong>Key distinction:</strong> AQE changes how later tasks read existing blocks; it does not split a running task.</p>
+</blockquote>
+<details>
+<summary>Show the animated flow</summary>
+
+<p><img src="visuals/adaptive-query-execution.svg" alt="AQE splits the read of a large orders partition across tasks that share one regions partition"></p>
+</details>
+
+<h2 id="the-driver-feedback-loop">The driver feedback loop</h2>
+<ol>
+<li><strong>Wrap.</strong> With <code>spark.sql.adaptive.enabled=true</code>, <code>InsertAdaptiveSparkPlan</code> checks
+the plan. An existing exchange or a child distribution that might require one is
+sufficient reason to consider AQE; a plain scan need not be wrapped. Supported
+nodes must have logical links. <code>AdaptiveSparkPlanExec</code> owns the initial and current
+physical plans, a stage-ID counter, and <code>isFinalPlan</code>. Its <code>AdaptiveExecutionContext</code>
+is tied to the <code>QueryExecution</code>, not shared across unrelated applications.
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/adaptive/InsertAdaptiveSparkPlan.scala#L49-L135">Admission and logical-link guards</a>.</li>
+<li><strong>Materialize ready work.</strong> <code>withFinalPlanUpdate</code> walks up from the leaves. Once
+child stages are ready, an ordinary exchange becomes <code>ShuffleQueryStageExec</code> or
+<code>BroadcastQueryStageExec</code>. <code>materialize()</code> returns a future: a shuffle submits
+a map-stage job; a broadcast submits the <a href="broadcast-exchange.html">broadcast build</a>.
+With exchange reuse enabled, a canonical plan can reuse a stage result rather
+than repeat the work. A completion event sets the stage&#39;s result or error.
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/adaptive/QueryStageExec.scala#L65-L106">Result state</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/adaptive/AdaptiveSparkPlanExec.scala#L913-L964">exchange reuse</a>.</li>
+<li><strong>Read the right statistics.</strong> <code>ShuffleQueryStageExec.mapStats</code> exposes
+<code>MapOutputStatistics(shuffleId, bytesByPartitionId)</code>: approximate total shuffle
+bytes for each <strong>reduce partition</strong>, aggregated across mappers. These are not key
+frequencies, task durations, or raw rows. Separately, <code>getRuntimeStatistics</code>
+supplies the exchange&#39;s size and row count; <code>computeStats</code> marks materialized
+statistics <code>isRuntime=true</code>. A shuffle with zero input partitions has no map
+statistics. <code>LogicalQueryStage</code> falls back to logical estimates if no physical
+statistics are available. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/MapOutputStatistics.scala#L20-L27">Map-size accuracy</a> ·
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/exchange/ShuffleExchangeExec.scala#L222-L247">shuffle statistics and RDD interface</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/adaptive/LogicalQueryStage.scala#L55-L72">logical statistics</a>.</li>
+<li><strong>Replan and finish.</strong> The driver replaces matching logical subtrees with
+<code>LogicalQueryStage</code>s, invalidates old statistics, reruns the adaptive optimizer
+and physical planner, and compares costs. It adopts a cheaper candidate, or a
+<strong>different</strong> candidate of equal cost; otherwise it keeps the current plan.
+If an eligible build side turns out to be small, the new join can use a broadcast.
+When dependencies are ready the result stage runs the action&#39;s handler; AQE
+marks the plan final and returns that result. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/adaptive/AdaptiveSparkPlanExec.scala#L359-L497">Event loop and cost gate</a> ·
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/adaptive/AdaptiveSparkPlanExec.scala#L1159-L1189">replanning and invalid-plan handling</a>.</li>
+</ol>
+<h2 id="worked-example-a-hot-ordersregion_id">Worked example: a hot <code>orders.region_id</code></h2>
+<p>Assume an inner sort-merge join that stays a shuffled join, skew handling enabled,
+and exchanges introduced to satisfy the join. These numbers illustrate the rule,
+not a cluster measurement.</p>
+<table>
+<thead>
+<tr>
+<th>Step</th>
+<th>What happens to reduce partition 3</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Detect</td>
+<td>The orders-side sizes are <code>[32, 32, 32, 640, 32]</code> MiB. The median is 32 MiB. With factor 5 and an absolute threshold of 256 MiB, the cutoff is <code>max(5 * 32, 256) = 256 MiB</code>. <strong>640 &gt; 256</strong> qualifies; exactly 256 would not. Each side uses its own median.</td>
+</tr>
+<tr>
+<td>Split</td>
+<td><code>OptimizeSkewedJoin.tryOptimizeJoinChildren</code> asks <code>ShufflePartitionsUtil.createSkewPartitionSpecs</code> for the individual map-block sizes for reducer 3. It groups contiguous mapper ranges into <code>PartialReducerPartitionSpec</code>s. A single indivisible block, missing map status, or a forbidden replication direction can prevent a split.</td>
+</tr>
+<tr>
+<td>Pair</td>
+<td>If the left splits into three ranges and the right does not split, three tasks each read a disjoint slice of left partition 3 <strong>and the same right partition 3</strong>. If both split, every left/right range pair is needed. For a left outer join, splitting the preserved left is legal; replicating that left side across right splits could duplicate unmatched rows.</td>
+</tr>
+<tr>
+<td>Execute</td>
+<td>After distribution validation, <code>AQEShuffleReadExec</code> passes the chosen specs to <code>getShuffleRDD</code>. It reads already-written map output differently; it does not rewrite the map files. Coalescing does the opposite for small adjacent reducer partitions. Forced skew optimization can accept an extra exchange to restore a required distribution.</td>
+</tr>
+</tbody></table>
+<p><a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/adaptive/OptimizeSkewedJoin.scala#L59-L193">Skew cutoffs and pairings</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/adaptive/ShufflePartitionsUtil.scala#L416-L459">range construction</a> ·
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/adaptive/OptimizeSkewedJoin.scala#L333-L362">validation and shuffle-origin guards</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/adaptive/CoalesceShufflePartitions.scala#L37-L126">coalescing</a>.</p>
+<h2 id="cost-failures-and-evidence">Cost, failures, and evidence</h2>
+<p>Splitting can shorten a long tail at the price of more tasks and repeated reads of
+the other side. It cannot eliminate genuine join-output explosion. Coalescing can
+reduce task-launch overhead but also parallelism. If a candidate plan is invalid,
+AQE can keep the old plan; a <strong>required stage materialization failure</strong> is different:
+after core scheduling has reported failure, AQE attempts to cancel outstanding
+exchanges and propagates the error.</p>
+<p>Inspect the SQL UI <strong>for the completed action</strong>, not just <code>explain</code> before it runs.
+Compare the initial and final plan (<code>isFinalPlan=true</code>); look for <code>SortMergeJoin(skew=true)</code>,
+<code>AQEShuffleRead</code> marked <code>skewed</code> or <code>coalesced</code>, and the metrics <strong>number of skewed
+partitions</strong> versus <strong>number of skewed partition splits</strong>. Then compare shuffle
+read sizes and task duration in the linked scheduler stages.
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/adaptive/AQEShuffleReadExec.scala#L241-L280">Shuffle-read metrics and execution</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/adaptive/AdaptiveSparkPlanExec.scala#L1241-L1271">failure cleanup</a>.</p>
+</main></html>

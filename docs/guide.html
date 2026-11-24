@@ -1,4 +1,4 @@
-<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>PySpark on YARN · Troubleshoot Spark</title><link rel="stylesheet" href="style.css"><main class="reader"><nav><a href="./">← Scenario explorer</a> · <a href="guide.html">Lifecycle</a> · <a href="scenarios.html">All cases</a></nav><h1 id="pyspark-on-yarn-from-spark-submit-to-the-last-shuffle-block">PySpark on YARN: from <code>spark-submit</code> to the last shuffle block</h1>
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>PySpark on YARN: from `spark-submit` to the last shuffle block · Troubleshoot Spark</title><link rel="stylesheet" href="style.css"><main class="reader"><nav><a href="./#map">Diagnostic map</a> · <a href="guide.html">Lifecycle</a> · <a href="scenarios.html">Cases</a> · <a href="components/index.html">Components</a></nav><h1 id="pyspark-on-yarn-from-spark-submit-to-the-last-shuffle-block">PySpark on YARN: from <code>spark-submit</code> to the last shuffle block</h1>
 <p>YARN decides <strong>where processes can run</strong>. A NodeManager launches those processes.
 The Spark driver decides <strong>which tasks they run</strong>. If executor B needs data produced
 by executor A, the driver tells B what to run and where the data is; B fetches the
@@ -8,7 +8,9 @@ bytes from A&#39;s node. The ResourceManager does not relay tasks or shuffle dat
 <a href="#how-processes-find-each-other">discovery</a>, <a href="#from-a-dataframe-action-to-an-executor-thread">task execution</a>,
 <a href="#follow-one-shuffle-block">shuffle</a>, <a href="#protocols-and-listening-ports">ports</a>, and
 <a href="#shutdown-failures-and-where-to-look">shutdown</a>. For individual troubleshooting
-cases, see the companion <a href="scenarios.html">PySpark-on-YARN scenarios</a>.</p>
+cases, see the companion <a href="scenarios.html">PySpark-on-YARN scenarios</a>.
+For the messages, state, and decisions each component owns, use the
+<a href="components/index.html">component design reference</a>.</p>
 <h2 id="the-application-we-will-follow">The application we will follow</h2>
 <pre><code class="language-shell">export HADOOP_CONF_DIR=/etc/hadoop/conf
 spark-submit --master yarn --deploy-mode cluster \
@@ -42,7 +44,27 @@ allocation on a node, not necessarily a Docker container. With one CPU per task 
 no other constraint, the three two-core executors can run six tasks concurrently.
 A 12-partition stage therefore takes at least two waves, not 12 containers.</p>
 <h2 id="startup-in-cluster-mode">Startup in cluster mode</h2>
-<ol class="sequence"><li><b>spark-submit client → ResourceManager</b><span>Obtain application ID</span></li><li><i>Stage script, configuration, and dependencies as needed</i></li><li><b>spark-submit client → ResourceManager</b><span>Submit application and AM launch instructions</span></li><li><b>ResourceManager → NodeManagers</b><span>Ask selected node to launch the AM container</span></li><li><b>NodeManagers → AM and driver JVM</b><span>Localize files and start the AM JVM</span></li><li><b>AM and driver JVM → Python driver</b><span>PythonRunner starts orders.py</span></li><li><b>Python driver → AM and driver JVM</b><span>Initialize SparkContext through Py4J</span></li><li><b>AM and driver JVM → ResourceManager</b><span>Register AM for this attempt</span></li><li><b>AM and driver JVM → ResourceManager</b><span>Request executor containers</span></li><li><b>ResourceManager → AM and driver JVM</b><span>Grant containers on specific nodes</span></li><li><b>AM and driver JVM → NodeManagers</b><span>Send an executor launch command to each selected NM</span></li><li><b>NodeManagers → Executor JVMs</b><span>Start executor JVMs in the granted containers</span></li><li><b>Executor JVMs → AM and driver JVM</b><span>Register with the Spark driver</span></li></ol>
+<figure class="source-figure"><a href="diagrams/guide-1.svg" title="Open diagram at full size"><img loading="lazy" src="diagrams/guide-1.svg" alt="Sequence diagram for guide; open to enlarge"></a><figcaption>Sequence diagram · <a href="diagrams/guide-1.svg">Open full size</a></figcaption><details><summary>Text equivalent</summary><pre>sequenceDiagram
+    autonumber
+    participant C as spark-submit client
+    participant R as ResourceManager
+    participant N as NodeManagers
+    participant A as AM and driver JVM
+    participant P as Python driver
+    participant E as Executor JVMs
+    C-&gt;&gt;R: Obtain application ID
+    Note over C: Stage script, configuration, and dependencies as needed
+    C-&gt;&gt;R: Submit application and AM launch instructions
+    R-&gt;&gt;N: Ask selected node to launch the AM container
+    N-&gt;&gt;A: Localize files and start the AM JVM
+    A-&gt;&gt;P: PythonRunner starts orders.py
+    P-&gt;&gt;A: Initialize SparkContext through Py4J
+    A-&gt;&gt;R: Register AM for this attempt
+    A-&gt;&gt;R: Request executor containers
+    R--&gt;&gt;A: Grant containers on specific nodes
+    A-&gt;&gt;N: Send an executor launch command to each selected NM
+    N-&gt;&gt;E: Start executor JVMs in the granted containers
+    E-&gt;&gt;A: Register with the Spark driver</pre></details></figure>
 <h3 id="what-the-two-yarn-launch-requests-carry">What the two YARN launch requests carry</h3>
 <p><code>org.apache.spark.deploy.SparkSubmit</code> runs on the submitting machine. For YARN
 cluster mode it selects <code>YarnClusterApplication</code>, which runs Spark&#39;s YARN <code>Client</code>.
@@ -134,7 +156,21 @@ second context, executor fleet, JVM, or YARN application.</li>
 cluster-mode driver does not depend on it. Executor launches are asynchronous:
 Spark need not wait for every requested executor before starting tasks.</p>
 <h2 id="what-changes-in-client-mode">What changes in client mode?</h2>
-<ol class="sequence"><li><b>Submit host / driver JVM → Python driver</b><span>Start orders.py on the submit host</span></li><li><b>Python driver → Submit host / driver JVM</b><span>Initialize SparkContext and driver RPC listener</span></li><li><b>Submit host / driver JVM → ResourceManager</b><span>Submit YARN application with driver host and port</span></li><li><b>ResourceManager → NodeManager</b><span>Launch AM container</span></li><li><b>NodeManager → ApplicationMaster</b><span>Start AM without the user driver</span></li><li><b>ApplicationMaster → ResourceManager</b><span>Register AM</span></li><li><b>ApplicationMaster → Submit host / driver JVM</b><span>Connect back to the existing driver</span></li><li><i>Executors launched by the AM register with D</i></li></ol>
+<figure class="source-figure"><a href="diagrams/guide-2.svg" title="Open diagram at full size"><img loading="lazy" src="diagrams/guide-2.svg" alt="Sequence diagram for guide; open to enlarge"></a><figcaption>Sequence diagram · <a href="diagrams/guide-2.svg">Open full size</a></figcaption><details><summary>Text equivalent</summary><pre>sequenceDiagram
+    autonumber
+    participant D as Submit host / driver JVM
+    participant P as Python driver
+    participant R as ResourceManager
+    participant N as NodeManager
+    participant A as ApplicationMaster
+    D-&gt;&gt;P: Start orders.py on the submit host
+    P-&gt;&gt;D: Initialize SparkContext and driver RPC listener
+    D-&gt;&gt;R: Submit YARN application with driver host and port
+    R-&gt;&gt;N: Launch AM container
+    N-&gt;&gt;A: Start AM without the user driver
+    A-&gt;&gt;R: Register AM
+    A-&gt;&gt;D: Connect back to the existing driver
+    Note over A,D: Executors launched by the AM register with D</pre></details></figure>
 <p>With <code>--deploy-mode client</code>, the driver is already alive <strong>before</strong> YARN starts
 the AM. The AM negotiates and launches executors but does not run the user script.
 The submit host must stay alive and reachable from the cluster. YARN cannot restart
@@ -229,7 +265,20 @@ execution can produce additional jobs.</p>
 </tbody></table>
 <p><strong>Coarse-grained</strong> means an executor retains its allocation across tasks, not that
 a whole stage must execute on one machine. The wire-level handoff looks like this:</p>
-<ol class="sequence"><li><b>NodeManager → Executor JVM</b><span>Start JVM with driver URL</span></li><li><b>Executor JVM → Driver RPC</b><span>RetrieveSparkAppConfig using a temporary RPC client</span></li><li><b>Driver RPC → Executor JVM</b><span>Return settings and resource profile</span></li><li><b>Executor JVM → Driver RPC</b><span>RegisterExecutor with endpoint reference and resources</span></li><li><b>Driver RPC → Executor JVM</b><span>Accept registration</span></li><li><b>Executor JVM → Driver RPC</b><span>RegisterBlockManager with data host and port</span></li><li><b>Executor JVM → Driver RPC</b><span>LaunchedExecutor signals readiness</span></li><li><b>Driver RPC → Executor JVM</b><span>LaunchTask over executor-initiated RPC connection</span></li><li><b>Executor JVM → Driver RPC</b><span>StatusUpdate for this task attempt</span></li></ol>
+<figure class="source-figure"><a href="diagrams/guide-3.svg" title="Open diagram at full size"><img loading="lazy" src="diagrams/guide-3.svg" alt="Sequence diagram for guide; open to enlarge"></a><figcaption>Sequence diagram · <a href="diagrams/guide-3.svg">Open full size</a></figcaption><details><summary>Text equivalent</summary><pre>sequenceDiagram
+    autonumber
+    participant N as NodeManager
+    participant E as Executor JVM
+    participant D as Driver RPC
+    N-&gt;&gt;E: Start JVM with driver URL
+    E-&gt;&gt;D: RetrieveSparkAppConfig using a temporary RPC client
+    D--&gt;&gt;E: Return settings and resource profile
+    E-&gt;&gt;D: RegisterExecutor with endpoint reference and resources
+    D--&gt;&gt;E: Accept registration
+    E-&gt;&gt;D: RegisterBlockManager with data host and port
+    E-&gt;&gt;D: LaunchedExecutor signals readiness
+    D-&gt;&gt;E: LaunchTask over executor-initiated RPC connection
+    E--&gt;&gt;D: StatusUpdate for this task attempt</pre></details></figure>
 <p>Modern Spark&#39;s executor scheduler RPC environment operates in client mode. The
 driver can send <code>LaunchTask</code> back using the executor-initiated connection; it need
 not dial a fixed executor scheduler port. The executor&#39;s <strong>block-transfer server</strong>,
@@ -259,7 +308,27 @@ not task attempt, if repeated writes must have the same effect.</p>
 <p>Suppose executor A on <code>worker-a</code> produced data needed by executor B&#39;s reduce
 partition 3. The diagram shows a cross-host, pull-based shuffle without an external
 shuffle service; <code>42001</code> is A&#39;s <strong>example data port</strong>.</p>
-<ol class="sequence"><li><b>Driver / MapOutputTrackerMaster → Map executor A</b><span>Launch map task using scheduler RPC</span></li><li><b>Map executor A → HDFS</b><span>Read assigned input</span></li><li><b>HDFS → Map executor A</b><span>Input bytes</span></li><li><b>Map executor A → Map executor A</b><span>Filter, partially aggregate, partition, write local shuffle files</span></li><li><b>Map executor A → Driver / MapOutputTrackerMaster</b><span>Task finishes with MapStatus and partition sizes</span></li><li><b>Driver / MapOutputTrackerMaster → Reduce executor B</b><span>Launch task for reduce partition 3</span></li><li><b>Reduce executor B → Driver / MapOutputTrackerMaster</b><span>GetMapOutputStatuses if not already cached</span></li><li><b>Driver / MapOutputTrackerMaster → Reduce executor B</b><span>Locations and size metadata</span></li><li><b>Reduce executor B → Map executor A</b><span>FetchShuffleBlocks at worker-a:42001</span></li><li><b>Map executor A → Reduce executor B</b><span>Stream handle</span></li><li><b>Reduce executor B → Map executor A</b><span>Request chunks for the required partition</span></li><li><b>Map executor A → Reduce executor B</b><span>Shuffle bytes directly to worker-b</span></li><li><b>Reduce executor B → Reduce executor B</b><span>Finish counts by region</span></li><li><b>Reduce executor B → HDFS</b><span>Write output partition</span></li><li><b>Reduce executor B → Driver / MapOutputTrackerMaster</b><span>Report task completion and commit information</span></li></ol>
+<figure class="source-figure"><a href="diagrams/guide-4.svg" title="Open diagram at full size"><img loading="lazy" src="diagrams/guide-4.svg" alt="Sequence diagram for guide; open to enlarge"></a><figcaption>Sequence diagram · <a href="diagrams/guide-4.svg">Open full size</a></figcaption><details><summary>Text equivalent</summary><pre>sequenceDiagram
+    autonumber
+    participant D as Driver / MapOutputTrackerMaster
+    participant A as Map executor A
+    participant B as Reduce executor B
+    participant S as HDFS
+    D-&gt;&gt;A: Launch map task using scheduler RPC
+    A-&gt;&gt;S: Read assigned input
+    S--&gt;&gt;A: Input bytes
+    A-&gt;&gt;A: Filter, partially aggregate, partition, write local shuffle files
+    A--&gt;&gt;D: Task finishes with MapStatus and partition sizes
+    D-&gt;&gt;B: Launch task for reduce partition 3
+    B-&gt;&gt;D: GetMapOutputStatuses if not already cached
+    D--&gt;&gt;B: Locations and size metadata
+    B-&gt;&gt;A: FetchShuffleBlocks at worker-a:42001
+    A--&gt;&gt;B: Stream handle
+    B-&gt;&gt;A: Request chunks for the required partition
+    A--&gt;&gt;B: Shuffle bytes directly to worker-b
+    B-&gt;&gt;B: Finish counts by region
+    B-&gt;&gt;S: Write output partition
+    B--&gt;&gt;D: Report task completion and commit information</pre></details></figure>
 <p>The map and reduce lanes are roles, not dedicated executor pools. The same
 executor may run both kinds of tasks. A successful write returns to Python after
 the sink&#39;s commit completes; the output rows do <strong>not</strong> travel through the driver.</p>
@@ -473,7 +542,21 @@ result and final metrics use task completion, not <code>Heartbeat</code></strong
 expires executors silent beyond the effective timeout (normally <code>spark.network.timeout</code>,
 default <strong>120 s</strong>); a single missed heartbeat is not itself grounds for removal.</p>
 <h2 id="shutdown-failures-and-where-to-look">Shutdown, failures, and where to look</h2>
-<ol class="sequence"><li><b>AM and driver JVM → Python driver</b><span>Last action returns after successful commit</span></li><li><b>Python driver → AM and driver JVM</b><span>spark.stop() stops SparkContext</span></li><li><b>AM and driver JVM → Executors</b><span>StopExecutor</span></li><li><b>Executors → Executors</b><span>Release resources and stop workers</span></li><li><b>Python driver → AM and driver JVM</b><span>Script exits normally</span></li><li><b>AM and driver JVM → ResourceManager</b><span>AM unregisters with final status SUCCEEDED</span></li><li><b>ResourceManager → NodeManagers</b><span>Clean up any remaining application containers</span></li><li><i>Container exits and cleanup reports are asynchronous</i></li></ol>
+<figure class="source-figure"><a href="diagrams/guide-5.svg" title="Open diagram at full size"><img loading="lazy" src="diagrams/guide-5.svg" alt="Sequence diagram for guide; open to enlarge"></a><figcaption>Sequence diagram · <a href="diagrams/guide-5.svg">Open full size</a></figcaption><details><summary>Text equivalent</summary><pre>sequenceDiagram
+    autonumber
+    participant P as Python driver
+    participant D as AM and driver JVM
+    participant E as Executors
+    participant R as ResourceManager
+    participant N as NodeManagers
+    D--&gt;&gt;P: Last action returns after successful commit
+    P-&gt;&gt;D: spark.stop() stops SparkContext
+    D-&gt;&gt;E: StopExecutor
+    E-&gt;&gt;E: Release resources and stop workers
+    P--&gt;&gt;D: Script exits normally
+    D-&gt;&gt;R: AM unregisters with final status SUCCEEDED
+    R-&gt;&gt;N: Clean up any remaining application containers
+    Note over R,N: Container exits and cleanup reports are asynchronous</pre></details></figure>
 <p>Finishing a <strong>job</strong> does not stop the <strong>application</strong>: executors can run the next
 job. In the normal cluster-mode path above, the Python process can still execute
 ordinary Python after <code>spark.stop()</code>. Spark also has JVM shutdown hooks for

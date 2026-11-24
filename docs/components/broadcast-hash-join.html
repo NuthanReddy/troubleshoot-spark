@@ -1,0 +1,90 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Broadcast hash join: probing one partition at a time · Troubleshoot Spark</title><link rel="stylesheet" href="../style.css"><main class="reader"><nav><a href=".././#map">Diagnostic map</a> · <a href="../guide.html">Lifecycle</a> · <a href="../scenarios.html">Cases</a> · <a href="../components/index.html">Components</a></nav><h1 id="broadcast-hash-join-probing-one-partition-at-a-time">Broadcast hash join: probing one partition at a time</h1>
+<p><a href="index.html">component index</a> | <a href="broadcast-exchange.html">Broadcast exchange: building the relation</a></p>
+<p><code>BroadcastHashJoinExec</code> consumes an already built hash table. The driver holds
+the plan node and obtains a <code>Broadcast[HashedRelation]</code>; an <strong>executor JVM task</strong>
+probes that relation with rows from <strong>one streamed partition</strong>. The streamed
+side need not be shuffled or sorted for this join. Exchanges elsewhere in the
+query still count, and a DataFrame written in Python does not make this join
+run in a Python worker.</p>
+<h2 id="flow-at-a-glance">Flow at a glance</h2>
+<ol>
+<li><strong>Broadcast exchange</strong>: The exchange builds and broadcasts a hash table keyed by region ID.</li>
+<li><strong>Executor task</strong>: The task looks up each order&#39;s region ID and checks each candidate&#39;s minimum amount.</li>
+<li><strong>Left join output</strong>: The task emits a row per match, or one row with a null label if none qualify.</li>
+</ol>
+<blockquote>
+<p><strong>Watch for:</strong> A hash hit alone is not a match: the order must also meet the region&#39;s minimum amount.</p>
+</blockquote>
+<details>
+<summary>Show the animated flow</summary>
+
+<p><img src="visuals/broadcast-hash-join.svg" alt="An executor probes the broadcast regions table and emits a joined order or a null label"></p>
+</details>
+
+<h2 id="input-state-and-output">Input, state, and output</h2>
+<table>
+<thead>
+<tr>
+<th>Owner</th>
+<th>Contract</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Driver plan node</td>
+<td>Stores left/right keys and children, <code>joinType</code>, <code>buildSide</code>, optional residual <code>condition</code>, and a null-aware flag. <code>HashJoin</code> maps the sides to build/stream, checks key count and compatible types, and binds key projections against the respective output schemas.</td>
+</tr>
+<tr>
+<td>Build-side exchange</td>
+<td><code>requiredChildDistribution</code> requests <code>BroadcastDistribution(HashedRelationBroadcastMode(buildBoundKeys, ...))</code> only on the build child. <code>buildPlan.executeBroadcast[HashedRelation]()</code> returns a handle; the other child has <code>UnspecifiedDistribution</code>. The exchange, not each probe task, collects and indexes the build rows.</td>
+</tr>
+<tr>
+<td>Executor task attempt</td>
+<td>The non-codegen <code>doExecute</code> maps streamed partitions. <code>buildReadOnlyRelation</code> obtains <code>broadcast.value.asReadOnlyCopy()</code> and accounts its estimated size in task peak execution memory. Long and unsafe relations share backing storage with the copy: per-task lookup cursors and reusable result rows are separate, not an entire duplicate hash table per row or task. Whole-stage generated code initializes its relation through the same helper.</td>
+</tr>
+<tr>
+<td>Downstream operator</td>
+<td>Receives an <code>RDD[InternalRow]</code> on the row path. <code>HashJoin.join</code> projects the result to the declared left/right schema and counts emitted rows. Inner joins return both sides; left outer makes right fields nullable; left semi/anti return just the left side. Output partitioning derives from the streamed child, not the broadcast.</td>
+</tr>
+</tbody></table>
+<p><a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/joins/BroadcastHashJoinExec.scala#L40-L89">Plan contract</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/joins/HashJoin.scala#L109-L182">key binding and projection</a> ·
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/joins/BroadcastHashJoinExec.scala#L133-L219">row and codegen paths</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/joins/BroadcastHashJoinExec.scala#L259-L269">per-task relation and memory accounting</a> ·
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/joins/HashedRelation.scala#L208-L231">shared unsafe map</a> / <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/joins/HashedRelation.scala#L1058-L1089">shared long map</a>.</p>
+<h2 id="trace-two-matching-rows-and-two-kinds-of-miss">Trace: two matching rows, and two kinds of miss</h2>
+<p>Use ordinary SQL equality, <strong>not</strong> null-safe equality:</p>
+<pre><code class="language-sql">SELECT o.order_id, r.label FROM orders o LEFT JOIN regions r
+  ON o.region_id = r.id AND o.amount &gt;= r.minimum
+</code></pre>
+<ol>
+<li>The <a href="sql-planner.html">planner</a> finds hashable equality keys and a broadcastable
+right side. A left outer join must preserve <code>orders</code>: right-build is allowed;
+left-build is not. A full outer join cannot use this broadcast hash strategy.</li>
+<li>Suppose the build table contains <code>(id=7, label=East, minimum=0)</code> and
+<code>(7, Outlet, 100)</code>. Both survive materialization. For order <code>(41, 7, 120)</code> the
+task generates key <code>7</code> once, iterates both candidates, and checks the residual
+amount predicate. It emits <strong>two</strong> rows: <code>(41, East)</code> and <code>(41, Outlet)</code>.
+A unique-key table uses a single-value lookup instead of a match iterator.</li>
+<li>Order <code>(42, 9, 50)</code> has no hash entry. Order <code>(43, 7, -1)</code> has candidates but
+neither passes the residual. A left outer probe emits <code>(42, NULL)</code> and
+<code>(43, NULL)</code> exactly once each. An inner probe would emit neither. Thus a
+hash hit is not necessarily a SQL match. The four rows are a set of example
+results, not an ordering guarantee. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/joins/HashJoin.scala#L184-L273">Outer probe and residual handling</a>.</li>
+<li>Do not reuse ordinary anti-join intuition for <code>NOT IN</code>. The separate
+<code>isNullAwareAntiJoin</code> path requires <strong>one key per side, LeftAnti, BuildRight,
+and no residual</strong>. An empty build returns all left rows; a build containing a
+null key returns none; otherwise only non-null, unmatched probe keys survive.
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/joins/BroadcastHashJoinExec.scala#L40-L89">Constructor guards</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/joins/BroadcastHashJoinExec.scala#L133-L219">executor branches</a>.</li>
+</ol>
+<h2 id="performance-and-failure-clues">Performance and failure clues</h2>
+<p>Look for <code>BroadcastHashJoin</code>, <code>BuildRight</code>/<code>BuildLeft</code>, and the separate
+<code>BroadcastExchange</code> in <code>df.explain(&quot;formatted&quot;)</code> or the SQL UI&#39;s final plan.
+Compare <strong>number of output rows</strong> at the join with streamed input rows: many
+duplicates on both sides can produce a large output even when the broadcast
+fits. A slow streamed partition can dominate the join without a join-induced
+shuffle. Peak execution memory includes the recorded relation estimate; summing
+it across tasks is <strong>not</strong> a measure of distinct executor-resident hash tables.</p>
+<p>A build timeout fails while obtaining the handle, before these probes can run;
+inspect the exchange and driver logs. A task that fails after starting its probe
+can be retried over the streamed partition with the broadcast handle. The join
+does not switch algorithms halfway through that partition or rebuild a table
+from source for every retry. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/joins/HashJoin.scala#L368-L396">Join dispatch and output metric</a>.</p>
+</main></html>

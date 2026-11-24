@@ -1,0 +1,62 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>BlockManagerMaster: the driver's block directory · Troubleshoot Spark</title><link rel="stylesheet" href="../style.css"><main class="reader"><nav><a href=".././#map">Diagnostic map</a> · <a href="../guide.html">Lifecycle</a> · <a href="../scenarios.html">Cases</a> · <a href="../components/index.html">Components</a></nav><h1 id="blockmanagermaster-the-driver39s-block-directory">BlockManagerMaster: the driver&#39;s block directory</h1>
+<p><a href="index.html">component index</a> | <a href="block-manager.html">BlockManager</a> | <a href="block-transfer-service.html">Block transfer service</a></p>
+<p>If executor 5 wants <code>rdd_17_3</code>, the master can answer <strong>which managers have reported it</strong>. It cannot return partition 3&#39;s records. <code>BlockManagerMaster</code> is a client facade in each JVM. Only the driver creates the <code>BlockManagerMaster</code> and <code>BlockManagerMasterHeartbeat</code> RPC <strong>endpoints</strong>; executors look up references to those driver endpoints. The driver uses the same API but dispatches its own RPCs in-process. On YARN, neither endpoint is the ResourceManager or a NodeManager. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/SparkEnv.scala#L735-L747">Endpoint creation and lookup</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/SparkEnv.scala#L780-L805">master wiring</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/rpc/netty/NettyRpcEnv.scala#L238-L256">local vs remote RPC</a></p>
+<h2 id="flow-at-a-glance">Flow at a glance</h2>
+<ol>
+<li><strong>Executor 2</strong>: Report the block ID, storage tier and size.</li>
+<li><strong>Driver directory</strong>: Index executor 2 under that block ID.</li>
+<li><strong>Executor 5</strong>: Look up the block to get a holder&#39;s address.</li>
+</ol>
+<blockquote>
+<p><strong>Key distinction:</strong> The directory returns a reported address, not the block or proof that it is still readable.</p>
+</blockquote>
+<details>
+<summary>Show the animated flow</summary>
+
+<p><img src="visuals/block-manager-master.svg" alt="Executor 2 reports a cached block, the driver records its location, and executor 5 looks up the holder's address."></p>
+</details>
+
+<h2 id="state-and-message-contracts">State and message contracts</h2>
+<p>The driver keeps two indexes to answer different questions: <code>blockLocations: BlockId -&gt; Set[BlockManagerId]</code> finds holders, while <code>blockManagerInfo: BlockManagerId -&gt; BlockManagerInfo</code> knows each holder&#39;s storage endpoint, per-block statuses, memory limits, remaining memory, and last-seen time. An executor-ID index resolves registrations; a bounded directory cache maps executor IDs to local disk paths for same-host reads. No index stores the actual bytes. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/storage/BlockManagerMasterEndpoint.scala#L49-L104">Directory state</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/storage/BlockManagerMasterEndpoint.scala#L1177-L1246">per-manager accounting</a></p>
+<table>
+<thead>
+<tr>
+<th>Request</th>
+<th>Data in</th>
+<th>Reply / side effect</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>RegisterBlockManager</code></td>
+<td>Executor ID, host, transfer port, local dirs, max on/off-heap storage memory, storage RPC endpoint, re-registration flag</td>
+<td>Adds topology if available; registers a new manager and posts a listener event. Replaces an old ID for the same executor. Re-registration for an executor no longer active can return an invalid ID.</td>
+</tr>
+<tr>
+<td><code>UpdateBlockInfo</code></td>
+<td>Manager ID, block ID, <strong>effective</strong> storage level, memory/disk sizes, optional checksum</td>
+<td>Updates accounting and membership; an invalid level removes that location. A Boolean reply tells an ordinary executor whether to re-register. Successful replies trigger a block-updated listener event, not a transfer.</td>
+</tr>
+<tr>
+<td><code>GetLocations</code> / <code>GetLocationsAndStatus</code></td>
+<td>Block ID(s); the second form also takes the requester&#39;s host</td>
+<td>Returns locations, or an optional bundle of locations, a representative <code>BlockStatus</code> and optional same-host directories. An empty result means no suitable report, not that Spark tested all disks.</td>
+</tr>
+<tr>
+<td><code>GetPeers</code></td>
+<td>Requesting manager ID</td>
+<td>Returns candidate managers for replication; excludes the requester, driver and decommissioning managers. The caller chooses targets and sends bytes.</td>
+</tr>
+</tbody></table>
+<p><a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/storage/BlockManagerMaster.scala#L77-L124">Client messages</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/storage/BlockManagerMasterEndpoint.scala#L719-L798">registration decisions</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/storage/BlockManagerMasterEndpoint.scala#L147-L195">update dispatch</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/storage/BlockManagerMasterEndpoint.scala#L828-L922">directory mutations</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/storage/BlockManagerMasterEndpoint.scala#L1014-L1084">lookup and peers</a></p>
+<h2 id="one-lifecycle-rdd_17_3">One lifecycle: <code>rdd_17_3</code></h2>
+<ol>
+<li>Executor 2 stores partition 3 in memory, then reports the block and size. Executor 5 can query the driver and receive executor 2&#39;s <strong>transfer</strong> address. The subsequent fetch goes to executor 2, not through the driver&#39;s master endpoint. The scheduler can also batch these location lookups to build preferred task locations. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/storage/BlockManagerMasterEndpoint.scala#L1014-L1084">Lookup</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/DAGScheduler.scala#L640-L657">scheduler use</a></li>
+<li>If executor 2 evicts the block to disk under <code>MEMORY_AND_DISK</code>, a new report changes its status. If memory was the only allowed tier, its location disappears instead. With ESS and disk-RDD fetching enabled, the directory can additionally advertise the service&#39;s port for a disk copy; this is a route to the <strong>same file</strong>, not a second replica on independent hardware. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/storage/BlockManager.scala#L2253-L2306">Tier change reporting</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/storage/BlockManagerMasterEndpoint.scala#L899-L922">ESS location rule</a></li>
+<li>A later executor-loss notification removes the manager from both indexes. For a block with no remaining location the driver logs that no replicas remain. If proactive replication is enabled and another RDD copy survives, it can ask a surviving manager to replicate. The master neither reconstructs lost partitions nor replays tasks. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/storage/BlockManagerMasterEndpoint.scala#L530-L580">Executor loss</a></li>
+</ol>
+<p>Two optional policies qualify what “reported” means. With RDD cache visibility tracking enabled, a first report may not be reusable yet: a successful producing task marks the block visible. For a checksummed, sealed local checkpoint, a divergent or checksum-less update is <strong>acknowledged</strong> but kept out of the directory and eviction requested; <code>false</code> would incorrectly trigger re-registration. Neither policy turns ordinary block lookup into a content read. Normal shuffle map-output locations and per-reducer size estimates belong to the <a href="map-output-tracker-master.html">MapOutputTracker master</a>; special shuffle-index migration reports here are forwarded to it. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/storage/BlockManagerMasterEndpoint.scala#L283-L317">Visibility</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/storage/BlockManagerMasterEndpoint.scala#L828-L922">sealed update handling</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/storage/BlockManagerMasterEndpoint.scala#L800-L826">shuffle-index handling</a></p>
+<h2 id="liveness-cleanup-and-diagnosis">Liveness, cleanup and diagnosis</h2>
+<p>The driver scheduler forwards executor-heartbeat information to the separate heartbeat endpoint. It updates last-seen for a known manager or signals that an unknown executor manager should re-register. The executor registers again and reports its current reportable blocks; a lost-executor rejection is terminal for that executor. This tests <strong>registry membership</strong>, not whether a particular transfer port, file, or block is readable. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/DAGScheduler.scala#L569-L581">Heartbeat forwarding</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/storage/BlockManagerMasterHeartbeatEndpoint.scala#L26-L57">known/unknown result</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/storage/BlockManager.scala#L812-L849">re-registration</a></p>
+<p><code>RemoveRdd</code> clears directory metadata first, then asynchronously asks storage endpoints to delete their local blocks. <code>RemoveBroadcast</code> must fan out: a whole broadcast value may exist locally without being advertised. The driver&#39;s caller can request blocking completion; a nonblocking call is not proof that disk space has been released. On application shutdown only the driver facade stops the two driver endpoints. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/storage/BlockManagerMasterEndpoint.scala#L368-L419">RDD removal</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/storage/BlockManagerMasterEndpoint.scala#L510-L528">broadcast removal</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/storage/BlockManagerMaster.scala#L223-L258">blocking semantics</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/storage/BlockManagerMaster.scala#L328-L354">shutdown</a></p>
+<p><strong>Diagnostic split:</strong> No reported location? Check the producer&#39;s status update, <code>tellMaster</code>, eviction and manager-removal events. Location returned but a fetch fails? Match executor ID <strong>and host:port</strong> to the serving JVM or ESS, then inspect its transfer and disk logs. A healthy heartbeat or nonzero storage-memory total does not prove a specific copy still exists.</p>
+</main></html>

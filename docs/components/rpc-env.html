@@ -1,0 +1,63 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>RpcEnv: how a driver sends commands to an executor with no RPC listener · Troubleshoot Spark</title><link rel="stylesheet" href="../style.css"><main class="reader"><nav><a href=".././#map">Diagnostic map</a> · <a href="../guide.html">Lifecycle</a> · <a href="../scenarios.html">Cases</a> · <a href="../components/index.html">Components</a></nav><h1 id="rpcenv-how-a-driver-sends-commands-to-an-executor-with-no-rpc-listener">RpcEnv: how a driver sends commands to an executor with no RPC listener</h1>
+<p><a href="index.html">component index</a> | <a href="../guide.html#protocols-and-listening-ports">Networking and ports</a></p>
+<p><code>RpcEnv</code> is Spark&#39;s JVM <strong>control-message router</strong>. An <code>RpcEndpoint</code> handles messages under a name; an <code>RpcEndpointRef</code> is the caller&#39;s handle to that endpoint. Multiple endpoints can share one listener. <code>send</code> is one-way, <code>ask</code> returns a future, and <code>askSync</code> blocks the caller for a reply. The router delivers messages or reports failures; it neither schedules tasks nor decides whether to replace a YARN container. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/rpc/RpcEndpointRef.scala#L40-L102">Endpoint-ref contract</a></p>
+<h2 id="flow-at-a-glance">Flow at a glance</h2>
+<ol>
+<li><strong>Executor</strong>: Open a connection and register its endpoint with the driver.</li>
+<li><strong>Driver</strong>: Send LaunchTask back over that same connection.</li>
+<li><strong>Executor dispatcher</strong>: Deliver the queued command to the local backend.</li>
+</ol>
+<blockquote>
+<p><strong>Key distinction:</strong> Task launches need no Spark RPC listener on the executor. Fetching a result block uses a separate listener.</p>
+</blockquote>
+<details>
+<summary>Show the animated flow</summary>
+
+<p><img src="visuals/rpc-env.svg" alt="The driver sends a task launch back over the connection the executor opened, without dialing an executor port."></p>
+</details>
+
+<h2 id="which-side-listens">Which side listens?</h2>
+<p>The driver builds a <code>NettyRpcEnv</code> with a bind address, advertised host and requested port. It starts a transport server and a name-verification endpoint; Spark records the <strong>actual bound driver port</strong>. The executor creates its main <code>RpcEnv</code> with <code>clientMode = true</code>: it can register endpoints and receive messages, but has <strong>no listening Spark RPC port</strong> (<code>rpcEnv.address == null</code>). Its bootstrap configuration fetcher is a separate, temporary client. This <code>clientMode</code> is a transport setting, not <code>--deploy-mode client</code>: YARN executors use it in <strong>both</strong> deploy modes. In cluster mode the AM uses the driver&#39;s <code>RpcEnv</code>; in client deploy mode the AM itself creates another client-only environment. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/SparkEnv.scala#L689-L728">SparkEnv creation</a> / <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/rpc/netty/NettyRpcEnv.scala#L505-L530">Transport factory</a> / <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/deploy/yarn/ApplicationMaster.scala#L502-L519">Cluster AM</a> / <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/deploy/yarn/ApplicationMaster.scala#L564-L581">Client AM</a></p>
+<h2 id="route-selection">Route selection</h2>
+<table>
+<thead>
+<tr>
+<th>What the caller holds</th>
+<th>Where the message goes</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>A ref whose address equals the sending environment&#39;s address</td>
+<td><strong>Local.</strong> Post the object directly to the dispatcher&#39;s inbox; no wire serialization, socket or inline invocation of the handler. A local <code>ask</code> uses a promise for its reply. This includes an executor sending to <code>self</code>.</td>
+</tr>
+<tr>
+<td>A ref to a different environment with an attached <code>TransportClient</code></td>
+<td><strong>Remote, existing connection.</strong> Serialize and send on that channel. This is how the driver reaches a client-only executor.</td>
+</tr>
+<tr>
+<td>A remote ref without an attached client, but with a listening address</td>
+<td><strong>Remote, by address.</strong> A per-address <code>Outbox</code> queues messages while a connection thread opens a client, then drains the queue. A driver URI such as <code>spark://CoarseGrainedScheduler@driver.example:7078</code> names one endpoint; <code>7078</code> here is only an example.</td>
+</tr>
+</tbody></table>
+<p>The address check happens first, then the attached-client check. A client-only ref renders as <code>spark-client://Executor</code>; copying that string to a third JVM does <strong>not</strong> give it a way to dial the original executor. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/rpc/RpcEndpointAddress.scala#L24-L44">Address format</a> / <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/rpc/netty/NettyRpcEnv.scala#L161-L204">Send routing</a> / <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/rpc/netty/NettyRpcEnv.scala#L232-L285">Ask routing and timeout</a> / <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/rpc/netty/Outbox.scala#L125-L222">Outbox</a></p>
+<h2 id="trace-one-launchtask-on-the-wire">Trace one <code>LaunchTask</code> on the wire</h2>
+<ol>
+<li>The <a href="executor-backend.html">executor backend</a> looks up the driver&#39;s URI. <code>asyncSetupEndpointRefByURI</code> parses it and asks <code>RpcEndpointVerifier.CheckExistence(name)</code> on the driver. It then asks the driver to <code>RegisterExecutor</code> and includes its own <code>self</code> ref <strong>inside the message</strong>. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/rpc/netty/NettyRpcEnv.scala#L121-L154">Name verification</a> / <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/executor/CoarseGrainedExecutorBackend.scala#L101-L116">Registration request</a></li>
+<li>On the driver, deserializing that embedded ref attaches the <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/rpc/netty/NettyRpcEnv.scala#L536-L573">incoming transport client</a> to it. Because the executor advertised no listening address, the receiver fills in the <strong>peer socket address</strong> as <code>context.senderAddress</code>. The scheduler records that address to correlate disconnects and retains the actual endpoint ref for sending. It does not turn the peer&#39;s ephemeral source port into a listener. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/rpc/netty/NettyRpcEnv.scala#L701-L733">Inbound address handling</a> / <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/cluster/CoarseGrainedSchedulerBackend.scala#L263-L320">Driver registration</a></li>
+<li>Later the driver sends <code>LaunchTask</code> on the retained ref. In the executor, the Netty I/O handler decodes the request and posts a one-way message by endpoint name. A dispatcher thread invokes <code>CoarseGrainedExecutorBackend.receive</code> on the endpoint named <code>Executor</code>; the backend hands off to the <a href="executor.html">task worker pool</a>. A regular remote <strong>ask</strong> uses the same routing to reach <code>receiveAndReply</code>; <code>context.reply</code> serializes the response through a transport callback, whereas a local reply completes the caller&#39;s promise. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/rpc/netty/NettyRpcEnv.scala#L701-L733">Inbound dispatch</a> / <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/rpc/netty/NettyRpcCallContext.scala#L26-L67">Local versus remote reply</a></li>
+</ol>
+<figure class="source-figure"><a href="../diagrams/components-rpc-env-1.svg" title="Open diagram at full size"><img loading="lazy" src="../diagrams/components-rpc-env-1.svg" alt="Sequence diagram for components rpc env; open to enlarge"></a><figcaption>Sequence diagram · <a href="../diagrams/components-rpc-env-1.svg">Open full size</a></figcaption><details><summary>Text equivalent</summary><pre>sequenceDiagram
+    participant E as Executor RPC endpoint
+    participant D as Driver RPC listener
+    participant G as Driver result getter
+    participant B as Executor block-transfer listener
+    E-&gt;&gt;D: Open connection and register client-only endpoint ref
+    D-&gt;&gt;E: LaunchTask over the existing connection
+    E-&gt;&gt;D: FINISHED with an indirect result reference
+    D-&gt;&gt;G: Enqueue result
+    G-&gt;&gt;B: Fetch result block over the data service
+    B--&gt;&gt;G: Serialized result bytes</pre></details></figure>
+<p>The reverse <code>LaunchTask</code> uses the existing control channel; the <a href="task-result-getter.html">indirect result</a> uses a <a href="block-transfer-service.html">different listener</a> for its bytes.</p>
+<p><strong>State and threading.</strong> Registration maps endpoint names to message loops. Each endpoint has an inbox: <code>OnStart</code> first, <code>receive</code> or <code>receiveAndReply</code> during its lifetime, <code>OnStop</code> last. Ordinary endpoints can handle messages concurrently after startup. <code>ThreadSafeRpcEndpoint</code> requests serial handling; an isolated endpoint gets its own pool, and <code>IsolatedThreadSafeRpcEndpoint</code> uses one dedicated thread. The Netty I/O threads, RPC dispatcher, connection pool, timeout scheduler and task threads are not interchangeable. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/rpc/netty/Dispatcher.scala#L39-L88">Dispatcher</a> / <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/rpc/netty/Inbox.scala#L78-L149">Inbox</a> / <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/rpc/RpcEndpoint.scala#L138-L177">Endpoint threading contracts</a></p>
+<p><strong>Stop and diagnose.</strong> Stopping an endpoint unregisters its name; shutting down the environment stops outboxes, timer and dispatcher and closes the transport. A disconnect generates endpoint events. The <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/scheduler/cluster/YarnSchedulerBackend.scala#L274-L328">YARN driver backend</a>, not Netty, decides how to disable the executor and obtain its loss reason. A missing registered name yields <code>RpcEndpointNotFoundException</code> at lookup. An <strong>ask timeout</strong> means no reply arrived before the deadline, not that the peer never handled the request; <code>ask</code> itself does not retry. If registration and launches work but shuffle or indirect result fetches fail, inspect the <strong>separate <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/network/netty/NettyBlockTransferService.scala#L69-L94">block-transfer listener</a></strong>. A working driver/executor control channel does not establish that storage data is reachable. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/rpc/netty/NettyRpcEnv.scala#L758-L781">Connection events</a> / <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/rpc/netty/NettyRpcEnv.scala#L311-L352">Shutdown</a></p>
+</main></html>

@@ -1,0 +1,80 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Python driver: the main script and its JVM launcher · Troubleshoot Spark</title><link rel="stylesheet" href="../style.css"><main class="reader"><nav><a href=".././#map">Diagnostic map</a> · <a href="../guide.html">Lifecycle</a> · <a href="../scenarios.html">Cases</a> · <a href="../components/index.html">Components</a></nav><h1 id="python-driver-the-main-script-and-its-jvm-launcher">Python driver: the main script and its JVM launcher</h1>
+<p><a href="index.html">component index</a></p>
+<p>For <code>spark-submit --master yarn ... orders.py 2026-11</code>, one Python interpreter runs
+<code>orders.py</code> for this driver attempt. It reads arguments, executes ordinary Python code,
+builds Spark operations, and receives action results or exceptions. It is <strong>not</strong> the
+<a href="spark-driver.html">driver JVM</a> or a Python worker processing an executor partition.
+This classic PySpark launcher is <code>org.apache.spark.deploy.PythonRunner</code>, not the
+<a href="python-runner.html">executor-side <code>org.apache.spark.api.python.PythonRunner</code></a> or Spark Connect.</p>
+<h2 id="flow-at-a-glance">Flow at a glance</h2>
+<ol>
+<li><strong>Main script</strong>: Defines a function to map over an RDD.</li>
+<li><strong>Python driver</strong>: Serializes the function and its captured values.</li>
+<li><strong>Python worker</strong>: Applies that function to records in its partition.</li>
+</ol>
+<blockquote>
+<p><strong>Key distinction:</strong> The main script runs once per driver attempt, not once per partition.</p>
+</blockquote>
+<details>
+<summary>Show the animated flow</summary>
+
+<p><img src="visuals/python-driver.svg" alt="The Python driver packages a map function for a worker to run on partition records"></p>
+</details>
+
+<h2 id="invocation-contract">Invocation contract</h2>
+<table>
+<thead>
+<tr>
+<th>Invoker</th>
+<th>Input to <code>deploy.PythonRunner.main(args: Array[String])</code></th>
+<th>Where the script runs</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>SparkSubmit</code>, client mode</td>
+<td>Local primary script, local <code>--py-files</code> list, then application arguments</td>
+<td>Child of the submit-side JVM, on the client host</td>
+</tr>
+<tr>
+<td>AM user thread, cluster mode</td>
+<td>Localized primary <code>.py</code> name, <code>&quot;&quot;</code>, then application arguments. The empty second argument is intentional: the YARN client already prepared the launch <code>PYTHONPATH</code>.</td>
+<td>Child of the AM/driver JVM, in the AM container</td>
+</tr>
+</tbody></table>
+<p>The child sees the script as <code>sys.argv[0]</code> and <code>2026-11</code> as <code>sys.argv[1]</code>; the dependency
+list is a <strong>launcher</strong> argument, not a script argument. Compare <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/deploy/SparkSubmit.scala#L568-L578">client selection</a>
+with <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/deploy/SparkSubmit.scala#L824-L842">cluster submission</a>, <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/deploy/yarn/ApplicationMaster.scala#L741-L768">AM argument construction</a>, and
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/deploy/yarn/Client.scala#L984-L1019">YARN&#39;s localized Python path</a>.</p>
+<h2 id="what-the-launcher-and-script-do-in-order">What the launcher and script do, in order</h2>
+<ol>
+<li><strong>Choose the executable.</strong> The JVM <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/deploy/PythonRunner.scala#L42-L58">checks in order</a>: <code>spark.pyspark.driver.python</code>,
+<code>spark.pyspark.python</code>, <code>PYSPARK_DRIVER_PYTHON</code>, <code>PYSPARK_PYTHON</code>, then <code>python3</code>.
+That interpreter must exist where the child will run. The runner <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/deploy/PythonRunner.scala#L141-L201">normalizes local
+paths</a>: readable loose <code>.py</code> dependencies go into an importable directory;
+archives can be path entries themselves.</li>
+<li><strong>Prepare the child.</strong> The runner starts the authenticated local
+<a href="py4j-gateway.html">Py4J gateway</a>, waits for its port, then <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/deploy/PythonRunner.scala#L60-L86">builds the command</a>
+<code>ProcessBuilder([pythonExec, script, ...appArgs])</code>. Its <code>PYTHONPATH</code> combines resolved
+dependencies, Spark&#39;s Python path, and the inherited path. The <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/deploy/PythonRunner.scala#L97-L119">child environment</a>
+enables unbuffered output and supplies <code>PYSPARK_GATEWAY_PORT</code> and <code>PYSPARK_GATEWAY_SECRET</code>.
+The script attaches to this JVM rather than launching another.</li>
+<li><strong>Run the application.</strong> The <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/python/pyspark/sql/session.py#L575-L588">Python builder</a> returns a <a href="spark-session.html">SparkSession</a>
+backed by a JVM session and <a href="spark-context.html">application context</a>. For example,
+<code>orders.where(&quot;status = &#39;PAID&#39;&quot;).count()</code> calls <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/python/pyspark/sql/classic/dataframe.py#L505-L510"><code>_jdf.count()</code></a> and returns a
+Python <code>int</code>. For a Python RDD function, by contrast, the driver <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/python/pyspark/core/rdd.py#L5106-L5136">serializes the function
+and its serializers</a> into a <code>SimplePythonFunction</code> for distributed work.
+It does not rerun the main script for each partition.</li>
+<li><strong>Propagate completion.</strong> The JVM <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/deploy/PythonRunner.scala#L119-L131">merges the child&#39;s stderr into stdout, forwards it
+to its own stdout, and waits</a>. Exit <code>0</code> lets <code>main</code> return <code>Unit</code>; a nonzero
+status becomes <code>SparkUserAppException(exitCode)</code>. The runner closes the gateway in
+<code>finally</code>. In cluster mode the <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/deploy/yarn/ApplicationMaster.scala#L760-L795">AM handles the user-thread outcome</a>; before
+registration its <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/deploy/yarn/ApplicationMaster.scala#L377-L393">early failure rule</a> can replace the child&#39;s exact exit code.</li>
+</ol>
+<h2 id="diagnostic-an-import-fails-on-the-driver">Diagnostic: an import fails on the driver</h2>
+<p>If <code>orders.py</code> imports <code>order_rules</code> before constructing a session and raises
+<code>ModuleNotFoundError</code>, find the <strong>first Python traceback</strong> in the AM container&#39;s stdout
+(cluster) or submit process output (client). Check the chosen driver interpreter and
+distributed module/archive on that host. Changing executor dependencies alone cannot fix
+this failure: no partition has executed. A later AM message about context initialization
+or user exit describes the consequence, not the missing module.</p>
+</main></html>

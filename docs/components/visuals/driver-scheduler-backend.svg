@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="360" height="373" viewBox="0 0 360 373" role="img" aria-labelledby="flow-title" aria-describedby="flow-desc">
+<title id="flow-title">CoarseGrainedSchedulerBackend: the driver&apos;s executor ledger: Flow at a glance</title>
+<desc id="flow-desc">1. Registration: The driver records executor 3 with two cores but zero free. 2. Executor ready: A launch acknowledgement lets the driver offer both cores. 3. Task 41: Uses one core until the driver receives its finish report.</desc>
+<style>
+@keyframes handoff {
+  0%, 18% { transform: translateY(0); }
+  40%, 58% { transform: translateY(121px); }
+  82%, 100% { transform: translateY(242px); }
+}
+@media (prefers-reduced-motion: no-preference) {
+  #focus { display: inline; animation: handoff 4.6s ease-in-out 1 both; }
+}
+@media (prefers-reduced-motion: reduce) { #focus { display: none; animation: none; } }
+</style>
+<rect x="1" y="1" width="358" height="371" rx="13" fill="#f2f7f6" stroke="#b8cbc8"/>
+<path d="M24 30 V272" fill="none" stroke="#577d7b" stroke-width="2"/>
+<g font-family="Arial, Helvetica, sans-serif">
+  <rect x="48" y="10" width="302" height="111" rx="9" fill="#fff" stroke="#a8bdbb"/>
+  <circle cx="24" cy="30" r="12" fill="#184d50"/>
+  <text x="24" y="36" text-anchor="middle" font-size="17" font-weight="700" fill="#fff">1</text>
+  <text font-size="19" font-weight="700" fill="#12383d"><tspan x="62" y="36">Registration</tspan></text>
+  <text font-size="18" fill="#223a40"><tspan x="62" y="61">The driver records</tspan><tspan x="62" y="84">executor 3 with two cores</tspan><tspan x="62" y="107">but zero free.</tspan></text>
+  <rect x="48" y="131" width="302" height="111" rx="9" fill="#fff" stroke="#a8bdbb"/>
+  <circle cx="24" cy="151" r="12" fill="#184d50"/>
+  <text x="24" y="157" text-anchor="middle" font-size="17" font-weight="700" fill="#fff">2</text>
+  <text font-size="19" font-weight="700" fill="#12383d"><tspan x="62" y="157">Executor ready</tspan></text>
+  <text font-size="18" fill="#223a40"><tspan x="62" y="182">A launch acknowledgement</tspan><tspan x="62" y="205">lets the driver offer both</tspan><tspan x="62" y="228">cores.</tspan></text>
+  <rect x="48" y="252" width="302" height="111" rx="9" fill="#fff" stroke="#a8bdbb"/>
+  <circle cx="24" cy="272" r="12" fill="#184d50"/>
+  <text x="24" y="278" text-anchor="middle" font-size="17" font-weight="700" fill="#fff">3</text>
+  <text font-size="19" font-weight="700" fill="#12383d"><tspan x="62" y="278">Task 41</tspan></text>
+  <text font-size="18" fill="#223a40"><tspan x="62" y="303">Uses one core until the</tspan><tspan x="62" y="326">driver receives its finish</tspan><tspan x="62" y="349">report.</tspan></text>
+</g>
+<g id="focus" display="none" aria-hidden="true">
+  <circle cx="24" cy="30" r="16" fill="none" stroke="#17484d" stroke-width="2"/>
+  <path d="M40 25 l6 5 -6 5 z" fill="#17484d"/>
+</g>
+</svg>

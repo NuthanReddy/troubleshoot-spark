@@ -1,0 +1,69 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Py4J gateway: the local Python-to-JVM bridge · Troubleshoot Spark</title><link rel="stylesheet" href="../style.css"><main class="reader"><nav><a href=".././#map">Diagnostic map</a> · <a href="../guide.html">Lifecycle</a> · <a href="../scenarios.html">Cases</a> · <a href="../components/index.html">Components</a></nav><h1 id="py4j-gateway-the-local-python-to-jvm-bridge">Py4J gateway: the local Python-to-JVM bridge</h1>
+<p><a href="index.html">component index</a></p>
+<p>Classic PySpark uses Py4J so the <a href="python-driver.html">Python driver</a> can invoke methods on
+live objects in the <a href="spark-driver.html">driver JVM</a>. A Python <code>_jsc</code> or <code>_jdf</code> is a handle
+to a JVM object, not a copy of a context or dataset. The <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/api/python/Py4JServer.scala#L28-L69">JVM listener</a> binds
+<strong>loopback</strong>: inside the AM container in YARN cluster mode, on the submit host in client
+mode. Executors do not connect to this port. Their messages use <a href="rpc-env.html">Spark RPC</a>;
+executor-side Python workers have a different protocol. Spark Connect&#39;s remote session
+is not this bridge.</p>
+<h2 id="flow-at-a-glance">Flow at a glance</h2>
+<ol>
+<li><strong>Python DataFrame</strong>: Calls collectToPython on the driver JVM through Py4J.</li>
+<li><strong>Driver JVM</strong>: Returns connection details for a separate data socket.</li>
+<li><strong>Python driver</strong>: Reads row batches from that socket into a list.</li>
+</ol>
+<blockquote>
+<p><strong>Key distinction:</strong> A successful Py4J call tests the local bridge, not the executors&#39; route to the driver.</p>
+</blockquote>
+<details>
+<summary>Show the animated flow</summary>
+
+<p><img src="visuals/py4j-gateway.svg" alt="Py4J returns socket details to Python, which reads the collected rows over the separate socket"></p>
+</details>
+
+<h2 id="bootstrap-and-lifetime">Bootstrap and lifetime</h2>
+<ol>
+<li><strong>JVM publishes connection details.</strong> For a submitted <code>.py</code> file, <code>deploy.PythonRunner</code>
+creates <code>Py4JServer(SparkConf)</code>. The server generates an authentication secret and
+requests Java port <code>0</code> (an ephemeral port). With <code>PYSPARK_PIN_THREAD=true</code>, the default,
+it uses <code>ClientServer</code> to preserve Python/JVM thread affinity; otherwise it uses
+<code>GatewayServer</code>. The runner <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/deploy/PythonRunner.scala#L60-L74">joins the initialization thread</a> before
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/deploy/PythonRunner.scala#L103-L109">passing the actual port and secret</a> in the child&#39;s environment.</li>
+<li><strong>Python attaches.</strong> Under a lock, <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/python/pyspark/core/context.py#L442-L465"><code>SparkContext._ensure_initialized</code></a> caches
+the gateway and its <code>jvm</code> view. Despite the name <code>launch_gateway(conf)</code>, when
+<code>PYSPARK_GATEWAY_PORT</code> exists the <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/python/pyspark/java_gateway.py#L53-L64">attach branch</a> reads the integer port and
+secret and <strong>spawns nothing</strong>. It builds the corresponding authenticated <code>ClientServer</code>
+or <code>JavaGateway</code>, imports JVM class names, and returns the gateway. A caller needing
+JVM-to-Python callbacks can <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/python/pyspark/java_gateway.py#L139-L196">start a separate callback listener</a>.</li>
+<li><strong>Use and release.</strong> Each call names a JVM target, method, and arguments. A scalar
+can come back as a Python value; an object can come back as a proxy for the next call.
+For a submitted script <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/deploy/PythonRunner.scala#L119-L131">the runner closes the listener after the child exits</a>.
+Stopping the SparkContext does not itself close that listener.</li>
+</ol>
+<h2 id="one-action-two-local-channels">One action, two local channels</h2>
+<figure class="source-figure"><a href="../diagrams/components-py4j-gateway-1.svg" title="Open diagram at full size"><img loading="lazy" src="../diagrams/components-py4j-gateway-1.svg" alt="Sequence diagram for components py4j gateway; open to enlarge"></a><figcaption>Sequence diagram · <a href="../diagrams/components-py4j-gateway-1.svg">Open full size</a></figcaption><details><summary>Text equivalent</summary><pre>sequenceDiagram
+    participant P as Python driver
+    participant J as Driver JVM
+    P-&gt;&gt;J: Py4J call on _jdf.collectToPython()
+    Note over J: Execute plan and create a socket to serve batched pickles
+    J--&gt;&gt;P: Py4J reply: connection info, socket secret, server handle
+    P-&gt;&gt;J: Connect to the separate authenticated local socket
+    J--&gt;&gt;P: Serialized row batches
+    Note over P: Deserialize to list of Row</pre></details></figure>
+<p>Compare the <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/python/pyspark/sql/classic/dataframe.py#L508-L530">Python call sites</a> for <code>_jdf.count()</code> (a scalar) and <code>DataFrame.collect()</code>
+(a <code>list[Row]</code>). For <code>collect</code>, the <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/classic/Dataset.scala#L2204-L2213">JVM method</a> returns an
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/security/SocketAuthServer.scala#L162-L176"><code>Array[Any]</code> describing where to read</a>. A <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/security/SocketAuthServer.scala#L53-L95">separate data socket</a> carries
+the row batches over loopback, or over a Unix-domain socket when configured and supported.
+The rows are not one Py4J reply per record.</p>
+<h2 id="diagnostic-java_gateway_exited-is-a-different-bootstrap">Diagnostic: <code>JAVA_GATEWAY_EXITED</code> is a different bootstrap</h2>
+<p>When Python starts first (for example a classic PySpark shell) and has <strong>no</strong> supplied
+port, <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/python/pyspark/java_gateway.py#L57-L120"><code>launch_gateway</code> starts <code>spark-submit</code></a>, then reads a connection-info file.
+The <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/api/python/PythonGatewayServer.scala#L34-L76">JVM publisher</a> writes the port and length-prefixed UTF-8 secret to a
+temporary file and renames it into place; it watches stdin for the parent to exit.
+<code>JAVA_GATEWAY_EXITED</code> is raised in this branch if no connection file was published when
+the wait ends. Inspect that spawned JVM&#39;s startup output. In the ordinary
+<code>spark-submit orders.py</code> attach branch, a refusal on the inherited port points instead
+to the local driver JVM/listener, not executor-facing networking. Do not print the
+gateway secret when checking the environment.</p>
+</main></html>

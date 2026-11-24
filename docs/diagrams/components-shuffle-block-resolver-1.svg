@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 704.825 320" width="704.825" height="320" style="--bg:#101d2e;--fg:#ecf3f8;--line:#839ab5;--accent:#93e3d1;background:var(--bg)">
+<style>
+  text { font-family: 'system-ui', system-ui, sans-serif; }
+  svg {
+    /* Derived from --bg and --fg (overridable via --line, --accent, etc.) */
+    --_text:          var(--fg);
+    --_text-sec:      var(--muted, color-mix(in srgb, var(--fg) 60%, var(--bg)));
+    --_text-muted:    var(--muted, color-mix(in srgb, var(--fg) 40%, var(--bg)));
+    --_text-faint:    color-mix(in srgb, var(--fg) 25%, var(--bg));
+    --_line:          var(--line, color-mix(in srgb, var(--fg) 50%, var(--bg)));
+    --_arrow:         var(--accent, color-mix(in srgb, var(--fg) 85%, var(--bg)));
+    --_node-fill:     var(--surface, color-mix(in srgb, var(--fg) 3%, var(--bg)));
+    --_node-stroke:   var(--border, color-mix(in srgb, var(--fg) 20%, var(--bg)));
+    --_group-fill:    var(--bg);
+    --_group-hdr:     color-mix(in srgb, var(--fg) 5%, var(--bg));
+    --_inner-stroke:  color-mix(in srgb, var(--fg) 12%, var(--bg));
+    --_key-badge:     color-mix(in srgb, var(--fg) 10%, var(--bg));
+  }
+</style>
+<defs>
+  <marker id="seq-arrow" markerWidth="8" markerHeight="5" refX="8" refY="2.5" orient="auto-start-reverse">
+    <polygon points="0 0, 8 2.5, 0 5" fill="var(--_arrow)" />
+  </marker>
+  <marker id="seq-arrow-open" markerWidth="8" markerHeight="5" refX="8" refY="2.5" orient="auto-start-reverse">
+    <polyline points="0 0, 8 2.5, 0 5" fill="none" stroke="var(--_arrow)" stroke-width="1" />
+  </marker>
+</defs>
+<line class="lifeline" data-actor="B" x1="91.06450000000001" y1="70" x2="91.06450000000001" y2="290" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" />
+<line class="lifeline" data-actor="R" x1="289.87300000000005" y1="70" x2="289.87300000000005" y2="290" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" />
+<line class="lifeline" data-actor="I" x1="481.27150000000006" y1="70" x2="481.27150000000006" y2="290" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" />
+<line class="lifeline" data-actor="D" x1="624.8755000000001" y1="70" x2="624.8755000000001" y2="290" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" />
+<g class="message" data-from="B" data-to="R" data-label="getBlockData for shuffle 7, map 41, reduce 2" data-line-style="solid" data-arrow-head="filled" data-self="false">
+  <line x1="91.06450000000001" y1="90" x2="289.87300000000005" y2="90" stroke="var(--_line)" stroke-width="1" marker-end="url(#seq-arrow)" />
+  <text x="190.46875000000003" y="80" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">getBlockData for shuffle 7, map 41, reduce 2</text>
+</g>
+<g class="message" data-from="R" data-to="I" data-label="Read longs at positions 16 and 24" data-line-style="solid" data-arrow-head="filled" data-self="false">
+  <line x1="289.87300000000005" y1="130" x2="481.27150000000006" y2="130" stroke="var(--_line)" stroke-width="1" marker-end="url(#seq-arrow)" />
+  <text x="385.57225000000005" y="120" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">Read longs at positions 16 and 24</text>
+</g>
+<g class="message" data-from="I" data-to="R" data-label="Start 40, end 65" data-line-style="dashed" data-arrow-head="filled" data-self="false">
+  <line x1="481.27150000000006" y1="170" x2="289.87300000000005" y2="170" stroke="var(--_line)" stroke-width="1" stroke-dasharray="6 4" marker-end="url(#seq-arrow)" />
+  <text x="385.57225000000005" y="160" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">Start 40, end 65</text>
+</g>
+<g class="message" data-from="R" data-to="B" data-label="FileSegmentManagedBuffer for offset 40, length 25" data-line-style="dashed" data-arrow-head="filled" data-self="false">
+  <line x1="289.87300000000005" y1="210" x2="91.06450000000001" y2="210" stroke="var(--_line)" stroke-width="1" stroke-dasharray="6 4" marker-end="url(#seq-arrow)" />
+  <text x="190.46875000000003" y="200" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">FileSegmentManagedBuffer for offset 40, length 25</text>
+</g>
+<g class="message" data-from="B" data-to="D" data-label="Consumer or transport reads that segment" data-line-style="solid" data-arrow-head="filled" data-self="false">
+  <line x1="91.06450000000001" y1="250" x2="624.8755000000001" y2="250" stroke="var(--_line)" stroke-width="1" marker-end="url(#seq-arrow)" />
+  <text x="357.97" y="240" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">Consumer or transport reads that segment</text>
+</g>
+<g class="actor" data-id="B" data-label="BlockManager" data-type="participant">
+  <rect x="30.000000000000007" y="30" width="122.129" height="40" rx="4" ry="4" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <text x="91.06450000000001" y="50" font-size="13" text-anchor="middle" font-weight="500" fill="var(--_text)" dy="4.55">BlockManager</text>
+</g>
+<g class="actor" data-id="R" data-label="IndexShuffleBlockResolver" data-type="participant">
+  <rect x="192.12900000000005" y="30" width="195.488" height="40" rx="4" ry="4" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <text x="289.87300000000005" y="50" font-size="13" text-anchor="middle" font-weight="500" fill="var(--_text)" dy="4.55">IndexShuffleBlockResolver</text>
+</g>
+<g class="actor" data-id="I" data-label="Map 41 index" data-type="participant">
+  <rect x="427.6170000000001" y="30" width="107.30900000000001" height="40" rx="4" ry="4" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <text x="481.27150000000006" y="50" font-size="13" text-anchor="middle" font-weight="500" fill="var(--_text)" dy="4.55">Map 41 index</text>
+</g>
+<g class="actor" data-id="D" data-label="Map 41 data" data-type="participant">
+  <rect x="574.9260000000002" y="30" width="99.899" height="40" rx="4" ry="4" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <text x="624.8755000000001" y="50" font-size="13" text-anchor="middle" font-weight="500" fill="var(--_text)" dy="4.55">Map 41 data</text>
+</g>
+</svg>

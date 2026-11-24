@@ -1,0 +1,94 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SparkEnv: services local to one Spark JVM · Troubleshoot Spark</title><link rel="stylesheet" href="../style.css"><main class="reader"><nav><a href=".././#map">Diagnostic map</a> · <a href="../guide.html">Lifecycle</a> · <a href="../scenarios.html">Cases</a> · <a href="../components/index.html">Components</a></nav><h1 id="sparkenv-services-local-to-one-spark-jvm">SparkEnv: services local to one Spark JVM</h1>
+<p><a href="index.html">component index</a></p>
+<p><code>SparkEnv</code> answers <strong>&quot;which RPC, storage, serialization, shuffle, and memory services
+should code in this JVM use?&quot;</strong> A classic PySpark YARN application with three executor
+JVMs has four <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/SparkEnv.scala#L60-L87">environments</a> once initialized: one in the <a href="spark-driver.html">driver JVM</a>
+and one built independently in each executor. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/SparkEnv.scala#L613-L622"><code>SparkEnv.get</code></a> accesses the
+local one. Neither the Python driver nor Python workers get their own <code>SparkEnv</code>.
+It is not an OS environment-variable map, a <a href="spark-session.html">SQL session</a>, or the
+<a href="spark-context.html">SparkContext</a> that starts the application.</p>
+<h2 id="flow-at-a-glance">Flow at a glance</h2>
+<ol>
+<li><strong>Driver SparkEnv</strong>: Registers the endpoint for shuffle map locations.</li>
+<li><strong>Executor tracker</strong>: Gets shuffle locations from the driver on a cache miss.</li>
+<li><strong>Shuffle reader</strong>: Reads the needed blocks from those locations.</li>
+</ol>
+<blockquote>
+<p><strong>Watch for:</strong> If the executor cannot reach the tracker, check the advertised driver host and RPC port, not the Py4J port.</p>
+</blockquote>
+<details>
+<summary>Show the animated flow</summary>
+
+<p><img src="visuals/spark-env.svg" alt="The executor asks the driver's tracker for shuffle locations, then reads block data from those locations"></p>
+</details>
+
+<h2 id="who-creates-it-and-with-what">Who creates it, and with what?</h2>
+<table>
+<thead>
+<tr>
+<th>Caller</th>
+<th>Factory input</th>
+<th>Result and placement</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Driver <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/SparkContext.scala#L307-L313"><code>SparkContext.createSparkEnv</code></a></td>
+<td><code>SparkConf</code>, <code>isLocal</code>, <code>LiveListenerBus</code>, usable driver cores; bind address, advertised host and requested port from configuration</td>
+<td><code>createDriverEnv</code> returns a <code>SparkEnv</code> with executor ID <code>driver</code>; the context <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/SparkContext.scala#L534-L545">installs it with <code>SparkEnv.set</code></a>. In cluster mode it lives in the AM JVM, in client mode on the submit host.</td>
+</tr>
+<tr>
+<td><a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/executor/CoarseGrainedExecutorBackend.scala#L511-L515"><code>CoarseGrainedExecutorBackend</code></a></td>
+<td>Driver-derived <code>SparkConf</code>, executor ID, bind address, advertised hostname, assigned cores, optional I/O encryption key, <code>isLocal=false</code></td>
+<td><code>createExecutorEnv</code> returns and publishes that executor&#39;s environment. A <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/executor/CoarseGrainedExecutorBackend.scala#L439-L470">temporary <code>driverPropsFetcher</code> RPC client</a> retrieves application configuration and shuts down <strong>before</strong> the environment is built.</td>
+</tr>
+</tbody></table>
+<p>Compare the <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/SparkEnv.scala#L627-L683">two factory signatures</a>. The <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/deploy/yarn/ApplicationMaster.scala#L564-L584">client-mode AM</a> has an RPC
+environment for talking to the driver, not a second <strong>driver</strong> <code>SparkEnv</code>.</p>
+<h2 id="assembly-use-and-shutdown">Assembly, use, and shutdown</h2>
+<ol>
+<li><strong>Establish identity and transport.</strong> The <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/SparkEnv.scala#L699-L745">common factory</a> branches on
+executor ID. The driver requires a listener bus. Both sides construct a <code>SecurityManager</code>
+and an <a href="rpc-env.html"><code>RpcEnv</code></a>; the driver writes the <strong>actual bound port</strong> back to
+<code>spark.driver.port</code>. The factory creates the configured data serializer,
+<code>SerializerManager</code>, and a separate <code>JavaSerializer</code> for closures. These are JVM
+serializers, not the Python pickler.</li>
+<li><strong>Register here or look up there.</strong> <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/SparkEnv.scala#L736-L759"><code>registerOrLookupEndpoint(name, creator)</code></a>
+returns an <code>RpcEndpointRef</code>. On the driver it evaluates <code>creator</code> and registers the
+endpoint. On an executor it <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/util/RpcUtils.scala#L27-L35">resolves that name at the advertised driver address</a>.
+Thus <code>MapOutputTrackerMaster</code> owns shuffle metadata, while a <code>MapOutputTrackerWorker</code>
+can request it. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/SparkEnv.scala#L781-L824">Block-manager master endpoints</a> use the same pattern; each
+process still has its <strong>own</strong> <code>BlockManager</code> and block transfer service.
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/SparkEnv.scala#L840-L861"><code>OutputCommitCoordinator</code></a> also gets a reference to a driver endpoint.</li>
+<li><strong>Finish initialization at the right time.</strong> Constructing a <code>BlockManager</code> does not
+register it yet. The driver <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/SparkContext.scala#L633-L653">initializes shuffle and memory managers</a>
+before scheduling, then <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/SparkContext.scala#L678-L703">registers the block manager</a> once it has an
+application ID. On an executor the factory initializes its memory manager; executor
+startup <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/executor/Executor.scala#L335-L341">initializes the block manager</a> and later <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/executor/Executor.scala#L520-L535">loads shuffle managers
+with the executor user classpath</a>.</li>
+<li><strong>Tear down once.</strong> <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/SparkContext.scala#L2714-L2729">Driver context stop</a> and <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/executor/Executor.scala#L678-L688">non-local executor
+stop</a> each close their own environment. A <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/SparkEnv.scala#L283-L324">synchronized flag</a>
+prevents duplicate teardown; worker factories and trackers, shuffle/broadcast/block
+services, metrics, and the commit coordinator stop before RPC shutdown and termination.
+A clean driver context stop also clears the JVM&#39;s <code>SparkEnv</code> reference.</li>
+</ol>
+<figure class="source-figure"><a href="../diagrams/components-spark-env-1.svg" title="Open diagram at full size"><img loading="lazy" src="../diagrams/components-spark-env-1.svg" alt="Flowchart for components spark env; open to enlarge"></a><figcaption>Flowchart · <a href="../diagrams/components-spark-env-1.svg">Open full size</a></figcaption><details><summary>Text equivalent</summary><pre>flowchart LR
+    subgraph E[&quot;Executor JVM&quot;]
+        W[&quot;MapOutputTrackerWorker&quot;]
+        B[&quot;Local BlockManager&quot;]
+    end
+    subgraph D[&quot;Driver JVM&quot;]
+        M[&quot;MapOutputTrackerMaster endpoint&quot;]
+        H[&quot;BlockManagerMaster endpoints&quot;]
+    end
+    W --&gt;|&quot;RPC: ask for map-output metadata&quot;| M
+    B --&gt;|&quot;RPC via master reference: register block manager&quot;| H
+    B &lt;--&gt;|&quot;Block bytes, separate from driver metadata RPC&quot;| P[&quot;Peer block store / shuffle service&quot;]</pre></details></figure>
+<h2 id="diagnostic-loopback-works-cluster-rpc-does-not">Diagnostic: loopback works, cluster RPC does not</h2>
+<p>Suppose a client-mode driver advertises <code>spark.driver.host=localhost</code>. Its Python process
+can use the local <a href="py4j-gateway.html">Py4J gateway</a> and the JVM may successfully bind a port.
+But <code>localhost</code> in an AM on <strong>another</strong> node denotes that node, not the submit host.
+The AM will look for the driver there; executor bootstrap, if reached, also needs the
+real driver address. Compare <code>spark.driver.bindAddress</code> (local interface) with
+<code>spark.driver.host</code> (advertised peer address) and the <strong>bound</strong> RPC port.
+Supply an address reachable from the YARN nodes, not the Py4J port or the UI port.</p>
+</main></html>

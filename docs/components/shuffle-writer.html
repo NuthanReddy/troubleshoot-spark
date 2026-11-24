@@ -1,0 +1,73 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Shuffle writer: one map attempt, many reduce partitions · Troubleshoot Spark</title><link rel="stylesheet" href="../style.css"><main class="reader"><nav><a href=".././#map">Diagnostic map</a> · <a href="../guide.html">Lifecycle</a> · <a href="../scenarios.html">Cases</a> · <a href="../components/index.html">Components</a></nav><h1 id="shuffle-writer-one-map-attempt-many-reduce-partitions">Shuffle writer: one map attempt, many reduce partitions</h1>
+<p><a href="index.html">component index</a> | <a href="shuffle-block-resolver.html">Shuffle block resolver</a> | <a href="map-output-tracker-master.html">MapOutputTrackerMaster</a></p>
+<p>A shuffle writer runs inside the <strong>map task&#39;s executor JVM</strong>. It consumes one input partition, groups its records by destination reduce partition, and commits files that later tasks can pull. It returns a <code>MapStatus</code> to the task, not a stream of rows to the driver. The sort-shuffle manager does <strong>not</strong> imply that every writer sorts keys.</p>
+<h2 id="flow-at-a-glance">Flow at a glance</h2>
+<ol>
+<li><strong>Partitioner</strong>: Picks a reduce partition for each record from map partition 3.</li>
+<li><strong>Shuffle writer</strong>: Commits attempt 41&#39;s output to local disk in reduce-partition order.</li>
+<li><strong>Map task</strong>: Reports the serving address and block size estimates to the driver.</li>
+</ol>
+<blockquote>
+<p><strong>Key distinction:</strong> The 25 bytes for reducer 2 are together on disk. This layout groups records by partition; it does not require sorting by key.</p>
+</blockquote>
+<details>
+<summary>Show the animated flow</summary>
+
+<p><img src="visuals/shuffle-writer.svg" alt="Attempt 41 groups records by destination, commits them to disk, and reports their location to the driver"></p>
+</details>
+
+<h2 id="how-spark-chooses-the-writer">How Spark chooses the writer</h2>
+<p>On the driver, <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/Dependency.scala#L129-L141"><code>ShuffleDependency</code> registers with its shuffle manager</a> and holds the resulting handle. <code>SortShuffleManager</code> tests the following cases <strong>in order</strong>. On the executor, <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/shuffle/sort/SortShuffleManager.scala#L146-L177"><code>getWriter(handle, mapId, context, metrics)</code></a> constructs the corresponding writer for this attempt.</p>
+<table>
+<thead>
+<tr>
+<th>Handle / executor writer</th>
+<th>Selection rule</th>
+<th>What happens to records</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>BypassMergeSortShuffleHandle</code> / <code>BypassMergeSortShuffleWriter</code></td>
+<td>No map-side combine and number of reduce partitions <strong>at most</strong> <code>spark.shuffle.sort.bypassMergeThreshold</code> (default 200).</td>
+<td>Dispatch by <code>partitioner.getPartition(key)</code> to per-partition temporary writers; copy their segments into the final output in partition order. No key sort. Empty input commits zero lengths without opening all those writers.</td>
+</tr>
+<tr>
+<td><code>SerializedShuffleHandle</code> / <code>UnsafeShuffleWriter</code></td>
+<td>Bypass did not apply, the serializer supports relocation, no map-side combine, and at most <code>2^24</code> reduce partitions.</td>
+<td>Serialize each pair once into the sorter with its partition ID; sort record pointers by partition and spill as needed. One suitable spill can become the output directly; multiple spills are merged by partition.</td>
+</tr>
+<tr>
+<td><code>BaseShuffleHandle</code> / <code>SortShuffleWriter</code></td>
+<td>Otherwise.</td>
+<td><code>ExternalSorter</code> buffers objects and can spill. With map-side combine it uses the dependency&#39;s aggregator, partitioner and optional key ordering. Without combine it passes no key ordering: the map only needs records grouped by partition.</td>
+</tr>
+</tbody></table>
+<p>See the <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/shuffle/sort/SortShuffleManager.scala#L91-L111">selection order</a>, <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/shuffle/sort/SortShuffleWriter.scala#L118-L127">bypass predicate</a>, <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/internal/config/package.scala#L1863-L1869">threshold default</a>, and <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/shuffle/sort/SortShuffleManager.scala#L224-L245">serialized-mode restrictions</a>. The three implementations differ in scratch space and CPU cost, but expose the same block and status contract.</p>
+<h2 id="one-attempt-from-records-to-a-published-location">One attempt, from records to a published location</h2>
+<figure class="source-figure"><a href="../diagrams/components-shuffle-writer-1.svg" title="Open diagram at full size"><img loading="lazy" src="../diagrams/components-shuffle-writer-1.svg" alt="Sequence diagram for components shuffle writer; open to enlarge"></a><figcaption>Sequence diagram · <a href="../diagrams/components-shuffle-writer-1.svg">Open full size</a></figcaption><details><summary>Text equivalent</summary><pre>sequenceDiagram
+    participant T as ShuffleMapTask
+    participant P as ShuffleWriteProcessor
+    participant M as SortShuffleManager
+    participant W as Selected writer
+    participant D as Local disk output writer and resolver
+    participant S as Driver scheduler
+    T-&gt;&gt;P: Parent iterator, dependency, mapId 41, mapIndex 3, context
+    P-&gt;&gt;M: getWriter(handle, mapId, context, metrics)
+    M--&gt;&gt;P: Task-local writer
+    P-&gt;&gt;W: write(records)
+    W-&gt;&gt;D: Write partition segments and commit
+    D--&gt;&gt;W: Exact lengths by reduce ID
+    P-&gt;&gt;W: stop(success = true)
+    W--&gt;&gt;P: MapStatus
+    P--&gt;&gt;T: Return map task result
+    T--&gt;&gt;S: Task completion carries status, not records</pre></details></figure>
+<ol>
+<li><a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/ShuffleMapTask.scala#L82-L113"><code>ShuffleMapTask.runTask</code></a> obtains the parent RDD iterator for <strong>one input partition</strong>. It passes both <code>partitionId</code> (the logical map index) and <code>mapId</code> (normally <code>context.taskAttemptId()</code>, or <code>partitionId</code> under the old fetch protocol). A replacement for map index 3 can therefore produce file ID 58 instead of 41.</li>
+<li>The <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/shuffle/ShuffleWriteProcessor.scala#L30-L61">write processor</a> obtains a writer and metrics reporter. The selected writer consumes <code>(key, value)</code> pairs; the <strong>partitioner</strong>, not the input partition index, chooses a reduce ID for each record. For a DataFrame&#39;s <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/exchange/ShuffleExchangeExec.scala#L567-L586">SQL shuffle exchange</a>, the key already holds the computed destination partition ID and a passthrough partitioner preserves it. Intermediate state belongs to this attempt: <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/java/org/apache/spark/shuffle/sort/BypassMergeSortShuffleWriter.java#L148-L201">temporary partition writers</a>, <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/java/org/apache/spark/shuffle/sort/UnsafeShuffleWriter.java#L233-L310">serialized pages and spills</a>, or an <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/shuffle/sort/SortShuffleWriter.scala#L64-L111">object sorter</a>.</li>
+<li>With default local disk storage the merged output holds each reduce partition&#39;s serialized bytes contiguously. The <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/java/org/apache/spark/shuffle/sort/io/LocalDiskShuffleMapOutputWriter.java#L83-L122">disk writer</a> commits the exact length vector and optional checksums through the resolver; the <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/java/org/apache/spark/shuffle/sort/io/LocalDiskSingleSpillMapOutputWriter.java#L45-L56">single-spill writer</a> reaches the same commit path. For shuffle 7, attempt 41, lengths <code>[40, 0, 25]</code> mean reducer 2 has 25 bytes and reducer 1 has no block to fetch.</li>
+<li>The writer creates <code>MapStatus(blockManager.shuffleServerId, partitionLengths, mapId, ...)</code>. The <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/MapStatus.scala#L49-L91">status encoding</a> preserves emptiness but can approximate sizes. An optional aggregate row checksum in the status compares <strong>attempts</strong>; per-block checksums on disk diagnose <strong>corrupted bytes</strong>. The <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/DAGScheduler.scala#L4094-L4116">scheduler registers the result</a> under logical input slot 3. The shuffle bytes remain on the producing node, even if the advertised port belongs to its external shuffle service.</li>
+</ol>
+<h2 id="failure-and-diagnosis">Failure and diagnosis</h2>
+<p>On a write exception the processor <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/shuffle/ShuffleWriteProcessor.scala#L117-L129">calls <code>stop(false)</code> if it obtained a writer and rethrows</a>; it does not return a successful status for that attempt. Each implementation owns its scratch cleanup: for example, <code>SortShuffleWriter.stop</code> stops its sorter, and the bypass writer <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/java/org/apache/spark/shuffle/sort/BypassMergeSortShuffleWriter.java#L197-L211">aborts its output on write failure</a>. A still-needed failed map task can be <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/TaskSetManager.scala#L1139-L1163">requeued by <code>TaskSetManager</code> within its failure limit</a>. Stopping a <strong>successful</strong> writer does not delete the committed files: reducers may not have started yet.</p>
+<p><strong>Diagnostic:</strong> For a slow producer, compare map-task <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/executor/ShuffleWriteMetrics.scala#L35-L49">shuffle bytes/records written and write time</a> with <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/util/collection/ExternalSorter.scala#L768-L785">memory and disk bytes spilled</a>. Large spill with modest final output points to sorter or merge work worth investigating; a bypass writer uses temporary partition files instead. For a commit failure, start with the map attempt and its local-disk exception. A downstream reduce fetch timeout describes a different operation.</p>
+</main></html>

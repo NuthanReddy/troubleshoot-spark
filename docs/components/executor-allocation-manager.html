@@ -1,0 +1,55 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ExecutorAllocationManager: deciding how many executors to request · Troubleshoot Spark</title><link rel="stylesheet" href="../style.css"><main class="reader"><nav><a href=".././#map">Diagnostic map</a> · <a href="../guide.html">Lifecycle</a> · <a href="../scenarios.html">Cases</a> · <a href="../components/index.html">Components</a></nav><h1 id="executorallocationmanager-deciding-how-many-executors-to-request">ExecutorAllocationManager: deciding how many executors to request</h1>
+<p><a href="index.html">component index</a></p>
+<p><code>ExecutorAllocationManager</code> maintains the <strong>desired total number of executors per resource profile</strong>. A target of six means &quot;six in all,&quot; not &quot;launch six more.&quot; This is driver-JVM policy, not the YARN allocator: it neither grants a container nor chooses the node on which to run it.</p>
+<h2 id="flow-at-a-glance">Flow at a glance</h2>
+<ol>
+<li><strong>Task counts</strong>: The allocation listener tracks running and pending tasks by resource profile.</li>
+<li><strong>Executor target</strong>: The manager can raise the target for sustained backlog or lower it as demand falls.</li>
+<li><strong>YARN handoff</strong>: The backend sends the desired totals to the application master, which requests containers.</li>
+</ol>
+<blockquote>
+<p><strong>Key distinction:</strong> Lowering the target from six to one does not kill five executors; idle removal is a separate decision.</p>
+</blockquote>
+<details>
+<summary>Show the animated flow</summary>
+
+<p><img src="visuals/executor-allocation-manager.svg" alt="Task counts drive the executor target that the backend sends to the YARN application master"></p>
+</details>
+
+<h2 id="ownership-and-contracts">Ownership and contracts</h2>
+<p><code>SparkContext</code> <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/SparkContext.scala#L727-L745">creates the manager</a> only when dynamic allocation is enabled and the scheduler backend implements <code>ExecutorAllocationClient</code>. The driver is in the AM JVM in YARN cluster mode and on the client in client mode. With a fixed executor count, this manager is absent. Its <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/ExecutorAllocationManager.scala#L269-L297">start method</a> registers two listeners on the <code>executorManagement</code> queue, attaches the <a href="executor-monitor.html">ExecutorMonitor</a> to the cleaner if present, starts a single daemon with a 100 ms fixed delay, and sends an initial target. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/SparkContext.scala#L2646-L2670"><code>SparkContext.stop()</code></a> stops the manager&#39;s daemon; it also stops the cleaner and, later, the listener bus.</p>
+<p>The manager <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/ExecutorAllocationManager.scala#L233-L257">validates shuffle safety</a> before starting. On YARN an external shuffle service is one option, not a universal requirement: tracking shuffle holders, decommissioning shuffle blocks, or using a shuffle implementation with reliable storage are alternatives at this revision.</p>
+<table>
+<thead>
+<tr>
+<th>Input or output</th>
+<th>What crosses the boundary</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Scheduler events in</td>
+<td>The allocation listener tracks stage attempts and their resource profiles, number of tasks, started partition indices, running attempts, speculative work, unschedulable task sets and preferred hosts. A stage submission arms the backlog timer; starting the last pending task clears it. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/ExecutorAllocationManager.scala#L785-L920">Listener state and callbacks</a></td>
+</tr>
+<tr>
+<td>Monitor snapshot in</td>
+<td>Counts by profile and <code>(executorId, profileId)</code> pairs whose <strong>idle</strong> deadline expired. These are removal candidates, not evidence of heartbeat loss.</td>
+</tr>
+<tr>
+<td>Target out</td>
+<td><code>requestTotalExecutors</code> sends all profile totals plus locality counts and host hints. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/scheduler/cluster/YarnSchedulerBackend.scala#L146-L164"><code>YarnSchedulerBackend</code></a> forwards <code>RequestExecutors</code> to the <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/deploy/yarn/ApplicationMaster.scala#L842-L857">registered AM</a>. Its allocator updates desired totals and separately <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/deploy/yarn/YarnAllocator.scala#L385-L464">polls the RM for grants</a>.</td>
+</tr>
+<tr>
+<td>Removal out</td>
+<td><code>killExecutors</code> or <code>decommissionExecutorsIfIdle</code> names specific executors. The manager passes <code>adjustTargetNumExecutors = false</code>, reasserts its desired totals, and marks only the returned IDs as pending removal or decommissioning. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/ExecutorAllocationManager.scala#L675-L749">Removal path</a></td>
+</tr>
+</tbody></table>
+<h2 id="one-allocation-tick">One allocation tick</h2>
+<ol>
+<li><strong>Estimate demand.</strong> For each profile, the ordinary case is <code>ceil((running + pendingRegular + pendingSpeculative) * executorAllocationRatio / maxTasksPerExecutor)</code>. Slots come from the resource profile, not necessarily the executor core count. There are <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/ExecutorAllocationManager.scala#L416-L448">separate adjustments</a> for speculative locality and for task sets that cannot run on existing executors because of exclusions.</li>
+<li><strong>Change the target.</strong> The <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/util/Utils.scala#L2725-L2747">initial target</a> is the largest of the configured minimum, initial count and executor instances. The manager protects that warm-up until a stage is submitted or an executor times out. After <code>schedulerBacklogTimeout</code>, it tries to add one; after each full, acknowledged increment, the next increment doubles while backlog persists. The increase starts from at least the known executor count and is capped by demand and configured bounds. A drained queue resets the timer and the increment. If demand falls, the target can fall immediately to <code>max(demand, minExecutors)</code> <strong>without killing anything</strong>. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/ExecutorAllocationManager.scala#L460-L528">Tick and downward adjustment</a>; <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/ExecutorAllocationManager.scala#L558-L668">acknowledgement and ramp</a>.</li>
+<li><strong>Decide which IDs can leave.</strong> For each timed-out candidate, subtract already pending removals and decommissions from the profile count. Skip an unknown profile or a removal that would cross the minimum or current target. A non-forced backend kill <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/cluster/CoarseGrainedSchedulerBackend.scala#L1141-L1161">checks again for busy executors</a>. Thus a stale idle observation need not interrupt a task.</li>
+</ol>
+<h2 id="worked-example-twelve-unfinished-partitions">Worked example: twelve unfinished partitions</h2>
+<p>Suppose the orders stage has one profile, two slots per executor, ratio <code>1</code>, minimum and initial target <code>1</code>, and maximum at least <code>6</code>. With no completions during the ramp and a sustained backlog, demand is <code>ceil(12/2) = 6</code>. Successive acknowledged targets can be <strong>2, 4, 6</strong> (increments <code>1</code>, <code>2</code>, then <code>2</code> capped by demand). A target of 6 alongside only 2 registered executors is consistent: the AM may still be waiting for grants or for processes to start. When the stage finishes, the target can drop to 1 even if all 6 are still registered. The other 5 leave only if they become eligible and the backend accepts the removals.</p>
+<p><strong>If reality differs from the target:</strong> compare <code>numberMaxNeededExecutors</code>, <code>numberTargetExecutors</code>, <code>numberAllExecutors</code> and <code>numberExecutorsPendingToRemove</code> in the <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/ExecutorAllocationManager.scala#L1139-L1158">driver metrics</a> with the AM&#39;s requested/granted containers. These gauges sum across profiles. A rejected ordinary target change restores the previous target; at this revision, a deferred target push after hold/resume or an AM reset has its own <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/ExecutorAllocationManager.scala#L301-L354">retry/backoff path</a>. Neither acknowledgement nor a high target promises capacity.</p>
+</main></html>

@@ -1,0 +1,75 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ExecutorMonitor: deciding which idle executors are candidates · Troubleshoot Spark</title><link rel="stylesheet" href="../style.css"><main class="reader"><nav><a href=".././#map">Diagnostic map</a> · <a href="../guide.html">Lifecycle</a> · <a href="../scenarios.html">Cases</a> · <a href="../components/index.html">Components</a></nav><h1 id="executormonitor-deciding-which-idle-executors-are-candidates">ExecutorMonitor: deciding which idle executors are candidates</h1>
+<p><a href="index.html">component index</a></p>
+<p><code>ExecutorMonitor</code> answers a different question from <a href="executor-allocation-manager.html">ExecutorAllocationManager</a>: <strong>which existing executor IDs have been idle long enough, given the data they hold?</strong> It returns candidates and counts. It does not choose a target, kill a JVM, ask YARN for resources, or detect a dead executor from missing heartbeats.</p>
+<h2 id="flow-at-a-glance">Flow at a glance</h2>
+<ol>
+<li><strong>Idle start</strong>: The monitor records when an executor&#39;s last running task ends.</li>
+<li><strong>Stored data</strong>: Cached blocks or shuffle data can extend the idle deadline; an active tracked shuffle keeps the executor ineligible.</li>
+<li><strong>Candidate list</strong>: Once the deadline expires, the monitor can return the executor&#39;s ID and resource profile to the manager.</li>
+</ol>
+<blockquote>
+<p><strong>Key distinction:</strong> Executor <code>7</code> can appear on the list and still stay if removing it would put its profile below target.</p>
+</blockquote>
+<details>
+<summary>Show the animated flow</summary>
+
+<p><img src="visuals/executor-monitor.svg" alt="An executor's last task starts its idle clock; the data it holds affects when the monitor returns its ID"></p>
+</details>
+
+<h2 id="owner-inputs-and-state">Owner, inputs and state</h2>
+<p>The dynamic allocation manager constructs this <strong>driver-JVM listener</strong>, <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/ExecutorAllocationManager.scala#L269-L291">registers it</a> on the <code>executorManagement</code> queue, and optionally attaches it to <code>ContextCleaner</code>. It has no process, RPC endpoint, or timer of its own. The queue thread updates most state; the manager&#39;s allocation thread calls <code>timedOutExecutors()</code>. When <code>SparkContext</code> <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/SparkContext.scala#L2646-L2670">stops the cleaner, manager and bus</a>, the callback and polling paths end.</p>
+<table>
+<thead>
+<tr>
+<th>Event or call</th>
+<th>State transition</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Executor added/removed</td>
+<td>Create a <code>Tracker</code> keyed by executor ID; count executors by resource-profile ID. A task or block event can arrive before the add, so an unknown profile can be <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/dynalloc/ExecutorMonitor.scala#L497-L518">filled in later</a>. Actual removal deletes the tracker and updates a reason counter.</td>
+</tr>
+<tr>
+<td>Task start/end</td>
+<td>A start from an active executor adds one to <code>runningTasks</code>. On successful shuffle-map completion, record the shuffle <strong>before</strong> decrementing the count. At zero, set <code>idleStart</code> from the monotonic clock; while running, the deadline is effectively infinite. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/dynalloc/ExecutorMonitor.scala#L309-L380">Task and removal handlers</a></td>
+</tr>
+<tr>
+<td>Block and job events</td>
+<td><code>cachedBlocks</code> maps RDD IDs to partition bitsets. Block updates and unpersist change it. Disk-backed RDD blocks that the external shuffle service is configured to serve do not extend the cache timeout. With shuffle tracking enabled <strong>and no external shuffle service</strong>, job/stage-to-shuffle maps tell the tracker whether any held shuffle belongs to an active job. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/dynalloc/ExecutorMonitor.scala#L383-L445">Block rules</a>; <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/dynalloc/ExecutorMonitor.scala#L202-L307">job-to-shuffle tracking</a>.</td>
+</tr>
+<tr>
+<td>Shuffle cleanup / accepted removal</td>
+<td>The cleaner posts a private <code>ShuffleCleanedEvent</code> back to the bus rather than mutating listener-owned state from its thread. The manager marks accepted IDs <code>pendingRemoval</code> or <code>decommissioning</code>; these are excluded on the next scan, but are not yet counted as gone. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/dynalloc/ExecutorMonitor.scala#L447-L461">Cleaner handoff</a>; <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/dynalloc/ExecutorMonitor.scala#L144-L200">flags and counts</a>.</td>
+</tr>
+</tbody></table>
+<h2 id="the-candidate-test">The candidate test</h2>
+<p>For a tracker with zero running tasks, the <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/dynalloc/ExecutorMonitor.scala#L537-L617">deadline calculation</a> is <code>idleStart + max(ordinaryIdleTimeout, applicableCacheTimeout, applicableShuffleTimeout)</code>. A timeout for a kind of data the executor does not hold contributes zero. An <strong>active</strong> tracked shuffle excludes the executor entirely, even if that calculated deadline has passed. Once no active job uses the shuffle, its data can still extend the deadline until cleanup or the configured shuffle-tracking timeout.</p>
+<p>The manager calls <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/dynalloc/ExecutorMonitor.scala#L45-L138"><code>timedOutExecutors()</code></a> on each ordinary allocation tick, but the monitor need not scan every executor each time. An atomic <code>nextTimeout</code> and a cached candidate list avoid repeated scans until a deadline or an invalidating change. A scan excludes pending removals, decommissions and active shuffles, compares <code>timeoutAt &lt;= now</code>, and returns <code>(executorId, resourceProfileId)</code> pairs sorted by ID. <strong>A returned pair is not permission to kill.</strong> The manager still enforces the target/minimum and the backend <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/cluster/CoarseGrainedSchedulerBackend.scala#L1141-L1161">checks for busy executors</a>.</p>
+<h2 id="worked-example-an-idle-map-executor-that-must-stay">Worked example: an idle map executor that must stay</h2>
+<p>Assume ordinary, cached-RDD and shuffle timeouts of 30, 120 and 90 seconds respectively, shuffle tracking on, and no external shuffle service. Executor <code>7</code> holds a cached RDD partition and output for shuffle <code>S</code>.</p>
+<table>
+<thead>
+<tr>
+<th>Time since its last task ended</th>
+<th>Why <code>7</code> stays or becomes eligible</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>0 s</td>
+<td><code>idleStart</code> is set. A job still uses <code>S</code>; zero running tasks is not sufficient.</td>
+</tr>
+<tr>
+<td>40 s</td>
+<td>The job ends and no other job uses <code>S</code>. The cache and shuffle still exist, so the deadline is 120 s <strong>from the original idle start</strong>, not from job end.</td>
+</tr>
+<tr>
+<td>55 s</td>
+<td>The last cached RDD is unpersisted. Only the shuffle extends the ordinary timeout; the recalculated deadline is 90 s.</td>
+</tr>
+<tr>
+<td>At or after 90 s</td>
+<td>A scan can return <code>(7, profileId)</code> if no task has started and no job reuses <code>S</code>. Removal is a separate manager/backend decision.</td>
+</tr>
+</tbody></table>
+<p><strong>Limit of the evidence:</strong> a timeout here means <em>eligible for idle removal</em>, not unresponsive. A task start can be <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/dynalloc/ExecutorMonitor.scala#L45-L138">queued while the allocation thread is scanning</a>. Conversely, the <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/dynalloc/ExecutorMonitor.scala#L309-L380">task-end handler</a> tracks even successful speculative map copies. An executor may stay because it produced a copy, not because a reducer actually fetched that copy.</p>
+</main></html>

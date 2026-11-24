@@ -1,55 +1,69 @@
-<!doctype html>
-<html lang="en">
-<!-- Thesis: locate the first broken handoff, not the last error. World: a navy diagnostic bench,
-     copper for a fault, mint for recovery. Story: select a symptom, trace its owners, try the
-     reproduction, verify the outcome. Viewport: left catalog, central three-stop trace, right
-     field notes, controls beneath. Form: the user's Protocol Explorer workbench, with Spark cases. -->
-<head>
-  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="theme-color" content="#101929">
-  <meta name="description" content="An interactive field guide to 40 PySpark on YARN scenarios: trace failures, understand the responsible components, reproduce symptoms, and verify resolutions.">
-  <title>Troubleshoot Spark · Scenario explorer</title>
-  <link rel="icon" type="image/svg+xml" href="mark.svg"><link rel="stylesheet" href="style.css">
-  <script type="module" src="app.js"></script>
-</head>
-<body>
-<a class="skip" href="#lesson">Skip to selected case</a>
-<header class="mast"><a class="brand" href="./"><img width="42" height="42" src="mark.svg" alt=""><span>Troubleshoot <strong>Spark</strong></span></a>
-  <nav aria-label="Guides"><a href="guide.html">Lifecycle guide</a><a href="scenarios.html">All scenarios</a>
-    <a href="https://github.com/NuthanReddy/troubleshoot-spark">GitHub ↗</a></nav></header>
+<!doctype html><html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#101b2b"><meta name="description" content="Troubleshoot Spark by following a symptom tree or selecting an exception. Inspect the evidence, choose a resolution and verify it with source-traced runbooks.">
+<title>Troubleshoot Spark · Diagnostic map</title><link rel="icon" type="image/svg+xml" href="mark.svg"><link rel="stylesheet" href="style.css?edition=diagnostics-2">
+<script type="module" src="app.js?edition=diagnostics-2"></script></head><body>
+<a class="skip" href="#workspace" id="skip">Skip to diagnostic workspace</a>
+<header class="mast"><a class="brand" href="#map"><img width="39" height="39" src="mark.svg" alt="">Troubleshoot <b>Spark</b></a>
+<nav aria-label="Reference"><a href="guide.html">Lifecycle</a><a href="components/index.html">Components</a><a href="scenarios.html">Field guide</a><a href="#sources">Source coverage</a><a href="https://github.com/NuthanReddy/troubleshoot-spark">GitHub ↗</a></nav></header>
 <div class="bench">
-  <aside id="catalog" class="catalog">
-    <div class="catalog-head"><h2>Scenario library</h2><span id="total"></span></div>
-    <label for="search">Find a symptom or exception</label><input type="search" id="search" placeholder="e.g. FetchFailed" autocomplete="off">
-    <label for="group">Topic</label><select id="group"><option value="">All topics</option></select>
-    <p id="available" aria-live="polite"></p><nav id="list" aria-label="Scenarios"></nav>
-  </aside>
-  <main id="lesson" tabindex="-1">
-    <p id="load" role="status">Loading the scenario catalog…</p>
-    <div id="content" hidden>
-      <div class="location"><span id="caseNo"></span><span aria-hidden="true"> / </span><span id="section"></span></div>
-      <h1 id="title"></h1><div id="trigger" class="intro"></div>
-      <div class="workarea">
-        <section class="trace" aria-labelledby="traceTitle">
-          <div class="sectionhead"><h2 id="traceTitle">Execution trace</h2><span class="mono">Illustrative replay</span></div>
-          <div class="stage">
-            <div id="nodes" role="group" aria-label="Choose a trace step"></div>
-            <section class="caption" aria-label="Selected step"><span id="phase"></span><div id="explain"></div></section>
-          </div>
-          <div class="controls"><button id="prev" type="button" aria-label="Previous step">←</button><button id="play" type="button">▶ Play trace</button><button id="next" type="button" aria-label="Next step">→</button><span id="counter" class="mono" aria-live="polite"></span></div>
-          <section class="route"><h3>Components involved</h3><ol id="actors"></ol></section>
-        </section>
-        <aside class="notes" aria-labelledby="notesTitle"><h2 id="notesTitle">Field notes</h2>
-          <div class="tabs" role="group" aria-label="Field note view"><button data-tab="clue">Evidence</button><button data-tab="repro">Reproduce</button><button data-tab="fix">Resolve</button></div>
-          <h3 id="noteTitle"></h3><div id="note"></div><div class="sources"><h3>Source trail</h3><ul id="sources"></ul></div>
-        </aside>
-      </div>
-      <details id="recovery" class="timeline" hidden><summary>Watch the failure and recovery</summary><img id="figure" class="figure" src="pyspark-yarn-media/shuffle-recovery.svg" alt="A shuffle fetch fails and Spark rebuilds the missing output."></details>
-      <details class="timeline"><summary>Read the full trace</summary><ol id="steps"></ol></details>
-      <nav class="sequence-nav" aria-label="Adjacent cases"><button id="previousCase">← Previous case</button><button id="nextCase">Next case →</button></nav>
-      <footer>Classic PySpark on YARN. Case studies, not live cluster telemetry. Diagnostic inspiration: <a href="https://holdenk.github.io/spark-flowchart/">Spark Advanced Topics Working Group</a>.</footer>
-    </div>
-    <noscript>JavaScript powers the explorer. <a href="scenarios.html">Read the 40 illustrated scenarios without it.</a></noscript>
-  </main>
-</div>
-</body></html>
+<aside class="catalog"><div class="catalog-head"><h2>Case library</h2><button id="toggle-catalog" aria-expanded="false" aria-controls="catalog-body">Browse 40 cases</button></div>
+<div id="catalog-body"><label for="search">Find a symptom, exception or component</label><input id="search" type="search" placeholder="e.g. FetchFailed" autocomplete="off">
+<label for="group">Topic</label><select id="group"><option value="">All topics</option></select>
+<p id="available" aria-live="polite"></p><nav id="list" aria-label="Scenarios"></nav></div></aside>
+<main id="workspace" tabindex="-1"><nav class="entry-ways" aria-label="Two ways to troubleshoot"><a href="#map" id="way-map"><span aria-hidden="true">⑂</span> Explore the flowchart</a><a href="#errors" id="way-errors"><span aria-hidden="true">⌕</span> Look up an error</a></nav>
+<p id="load" role="status">Loading the diagnostic map…</p>
+<section id="map" hidden>
+  <nav id="crumbs" class="crumbs" aria-label="Flowchart path"></nav><h1 id="map-title"></h1><p id="map-intro" class="intro"></p>
+  <div class="chart-sheet"><header class="sheet-title"><h2>Diagnostic flowchart</h2><span>Choose a branch</span></header><div id="fork" class="fork"></div></div>
+  <div class="example"><div><h2>Watch a shuffle failure</h2><p>A reducer asks for a block that no longer exists. Follow the failed fetch, the scheduler's decision and the replacement bytes.</p></div><a class="cta" href="#case-11">Open case 11 →</a></div>
+</section>
+<section id="lookup" hidden>
+  <h1>Which error did you see?</h1><p class="intro">Select an exception, or paste a short log excerpt. Matching happens in this browser; the text is not sent or saved. A shared error name can lead to more than one cause.</p>
+  <div class="lookup-box"><label for="log-query">Exception, error condition, symptom or log fragment</label>
+    <textarea id="log-query" rows="2" maxlength="12000" spellcheck="false" placeholder="e.g. org.apache.spark.shuffle.MetadataFetchFailedException: Missing an output location for shuffle 7"></textarea>
+    <div class="samples"><span>Examples</span><button data-query="OutOfMemoryError">OutOfMemoryError</button><button data-query="FetchFailed">FetchFailed</button><button data-query="AnalysisException">AnalysisException</button><button id="clear-log">Clear</button></div>
+    <div class="pick"><div><label for="error-kind">Show</label><select id="error-kind"><option value="all">Errors and symptoms</option><option value="error">Errors / exceptions only</option><option value="symptom">Symptoms only</option></select></div>
+      <div><label for="error-pick">Select a known issue</label><select id="error-pick"></select></div></div>
+  </div><p id="match-count" role="status"></p><ul id="match-list"></ul>
+</section>
+<section id="investigation" hidden>
+  <nav class="crumbs" aria-label="Investigation location"><a href="#errors">Error lookup</a><span>/</span><a id="via-map">Locate in flowchart</a><span>/</span><span id="investigate-kind"></span></nav>
+  <h1 id="investigate-name"></h1><p id="investigate-scope" class="intro"></p><div id="signatures" aria-label="Matching error signatures"></div>
+  <div class="investigation-grid"><section id="probe" class="probe-box" aria-label="Guided investigation"></section>
+  <aside class="notes"><h2>See the mechanism</h2><p>Related cases illustrate the same boundary; a replay is not proof of your incident's cause.</p><div id="case-links"></div>
+    <details><summary>Evidence and sources</summary><ul id="diagnostic-refs"></ul></details></aside></div>
+  <details class="timeline"><summary>Reproduce or compare safely</summary><p id="safe-comparison"></p></details>
+  <details class="timeline"><summary>Read all checks and resolutions without stepping through</summary><div id="all-probes"></div></details>
+</section>
+<section id="coverage" hidden>
+  <h1>What the catalog covers</h1><p class="intro">The inventory accounts for all 53 detail articles and four routing files at <a href="https://github.com/holdenk/spark-flowchart/tree/4f046b70c9bf83f4e51b7381512c6a6c8480110e/docs">Spark Advanced Topics revision 4f046b7</a>. Each entry below links to its corresponding investigation. A stub is not evidence of a fix.</p>
+  <p>The investigations are original walkthroughs cross-checked with Apache Spark references. They distinguish runtime and connector differences instead of treating examples from one installation as defaults. This is not a catalog of every error Spark or a third-party connector can produce.</p>
+  <ul id="coverage-items"></ul>
+</section>
+<section id="case" hidden>
+  <nav class="crumbs" aria-label="Location"><a href="#map">Diagnostic map</a><span>/</span><a id="case-path"></a><span>/</span><span id="case-no"></span></nav>
+  <h1 id="title"></h1><div id="trigger" class="intro"></div>
+  <nav class="case-tabs" aria-label="Case views"><button data-pane="trace">Animated trace</button><button data-pane="decision">Decision flowchart</button><button data-pane="full">Complete case</button><a id="start-investigation">Troubleshoot this case →</a></nav>
+  <div id="trace-pane" class="workarea">
+    <section class="simulation" aria-label="Component replay">
+      <header class="sheet-title"><h2>Component replay</h2><span>Illustration · not live telemetry</span></header>
+      <div class="machine-room"><div id="topology"></div><div id="objects" aria-label="Illustrative object states" hidden></div><div class="legend"><span class="control">● Control</span><span class="data">▣ Data</span><span class="decision">◆ Decision</span><span class="failure">× Failure</span><span class="recovery">● Recovery</span></div></div>
+      <div class="transport"><button id="prev" aria-label="Previous event">←</button><button id="play" class="cta">▶ Play trace</button><button id="next" aria-label="Next event">→</button>
+      <button id="jump" hidden>Jump to failure</button><label class="speed">Speed <select id="speed"><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option></select></label></div>
+      <div class="progress"><i id="meter"></i></div>
+      <div class="inspector"><div class="meta"><span id="counter" aria-live="polite"></span><span id="kind"></span></div><h3 id="phase"></h3><div id="direction" class="direction"></div>
+        <p id="explain"></p><div class="outcome">State <b id="state"></b></div>
+        <div id="scrub" aria-label="Jump to event"></div></div>
+    </section>
+    <aside class="notes"><h2>Field notes</h2><div class="tabs" aria-label="Field note view"><button data-tab="clue">Evidence</button><button data-tab="repro">Reproduce</button><button data-tab="fix">Resolve</button></div>
+      <h3 id="note-title"></h3><div id="note"></div><h3 class="subhead">Inside the components</h3><ul id="component-links"></ul>
+      <details><summary>Source trail</summary><ul id="sources"></ul></details></aside>
+  </div>
+  <section id="decision-pane" class="chart-sheet" hidden><header class="sheet-title"><h2>Decision flowchart</h2><span>Compare both outcomes</span></header><div id="decision-chart" class="fork"></div><div class="branch-notes"><h3>How to tell which branch applies</h3><div id="branch-evidence"></div><h3>What to change and verify</h3><div id="branch-fix"></div></div></section>
+  <article id="full-pane" class="reader case-reader" hidden></article>
+  <nav class="sequence-nav" aria-label="Adjacent cases"><a id="previous-case">← Previous case</a><a id="guide-link">Open in field guide ↗</a><a id="next-case">Next case →</a></nav>
+</section>
+<footer>Classic PySpark on managed YARN. <a href="components/index.html">Component reference</a> · <a href="https://holdenk.github.io/spark-flowchart/">Spark Advanced Topics Working Group</a></footer>
+<noscript>JavaScript powers the diagnostic map and replay. <a href="scenarios.html">Read the illustrated scenarios</a>, <a href="guide.html">lifecycle</a>, or <a href="components/index.html">component reference</a> without it.</noscript>
+</main></div></body></html>

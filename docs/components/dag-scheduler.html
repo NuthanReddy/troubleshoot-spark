@@ -1,0 +1,148 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>DAGScheduler: which stage can run next? · Troubleshoot Spark</title><link rel="stylesheet" href="../style.css"><main class="reader"><nav><a href=".././#map">Diagnostic map</a> · <a href="../guide.html">Lifecycle</a> · <a href="../scenarios.html">Cases</a> · <a href="../components/index.html">Components</a></nav><h1 id="dagscheduler-which-stage-can-run-next">DAGScheduler: which stage can run next?</h1>
+<p><a href="index.html">component index</a> · Driver JVM · Apache Spark <code>dada2a6</code></p>
+<h2 id="overview">Overview</h2>
+<p><code>DAGScheduler</code> turns a job on an RDD into <strong>stage attempts</strong>. Its question is
+&quot;are the inputs available?&quot;, not &quot;is there a free executor?&quot; A stage may be ready
+and still have no running tasks. The <a href="task-scheduler.html">task scheduler</a> places
+work only after it receives a <code>TaskSet</code>. Neither scheduler transfers shuffle
+blocks or asks YARN for a container to run an individual task.</p>
+<h2 id="flow-at-a-glance">Flow at a glance</h2>
+<ol>
+<li><strong>Result stage</strong>: Waits for two missing map outputs needed by partition 7.</li>
+<li><strong>Map tasks</strong>: Write the two shuffle outputs and report their locations to the driver.</li>
+<li><strong>DAG scheduler</strong>: Submits the result task for partition 7 once both outputs are known.</li>
+</ol>
+<blockquote>
+<p><strong>Key distinction:</strong> A stage can have all its inputs and still be waiting for an executor slot.</p>
+</blockquote>
+<details>
+<summary>Show the animated flow</summary>
+
+<p><img src="visuals/dag-scheduler.svg" alt="Two map outputs become available before the result task for partition 7 is submitted"></p>
+</details>
+
+<h2 id="requirements-analysis">Requirements analysis</h2>
+<p>For an ordinary batch shuffle, keep narrow dependencies in the same stage, reuse
+available shuffle outputs across jobs, and run only the partitions still needed.
+If an input disappears, repair its producer before retrying the consumer. A
+job&#39;s cancellation must not destroy work another active job still needs.
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/DAGScheduler.scala#L66-L110">Stage boundaries and sharing</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/DAGScheduler.scala#L1126-L1161">missing-parent test</a> ·
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/DAGScheduler.scala#L5282-L5324">shared-stage cancellation</a>.</p>
+<h2 id="component-architecture-and-lifetime">Component architecture and lifetime</h2>
+<p>The driver <code>SparkContext</code> creates the low-level scheduler/backend pair, then
+one <code>DAGScheduler</code> and later starts the task scheduler. The DAG scheduler wires
+itself back into <code>TaskScheduler</code>, uses the driver&#39;s <a href="map-output-tracker-master.html">MapOutputTrackerMaster</a>,
+<code>BlockManagerMaster</code> and listener bus, and starts <code>dag-scheduler-event-loop</code>.
+Application threads and task callbacks post events; the loop serializes changes
+to the job/stage graph. On <code>SparkContext.stop</code>, the DAG scheduler stops its
+timers and loop, fails outstanding job listeners during loop cleanup, then
+calls <code>taskScheduler.stop(exitCode)</code>.
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/SparkContext.scala#L649-L678">Context initialization</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/DAGScheduler.scala#L124-L170">collaborators</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/DAGScheduler.scala#L466-L486">callback wiring</a> ·
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/SparkContext.scala#L2652-L2660">context stop</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/DAGScheduler.scala#L2563-L2597">loop cleanup</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/DAGScheduler.scala#L5422-L5449">stop sequence</a>.</p>
+<h2 id="data-models">Data models</h2>
+<table>
+<thead>
+<tr>
+<th>Identity/state</th>
+<th>What it means in the driver</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>jobId</code> → <code>ActiveJob</code></td>
+<td>One submission, its requested output partitions, listener and finished-output bitmap. <code>jobIdToStageIds</code> and each stage&#39;s <code>jobIds</code> describe sharing, not a one-to-one ownership tree.</td>
+</tr>
+<tr>
+<td><code>stageId</code>, <code>stageAttemptId</code></td>
+<td>A stage is the logical computation; <code>makeNewStageAttempt</code> creates a fresh <code>StageInfo</code> and increments the next attempt ID. A task retry on a new executor does <strong>not</strong> by itself create a new stage attempt.</td>
+</tr>
+<tr>
+<td><code>shuffleId</code> → <code>ShuffleMapStage</code></td>
+<td>Active-stage lookup is distinct from retained map-output metadata. On an ordinary shuffle, availability means the tracker knows an output for every map partition; <code>pendingPartitions</code> tracks completions expected by the running stage.</td>
+</tr>
+<tr>
+<td><code>waitingStages</code>, <code>runningStages</code>, <code>failedStages</code></td>
+<td>Waiting for a parent, submitted for execution, or queued for resubmission. A running stage need not yet have an executor running one of its tasks.</td>
+</tr>
+</tbody></table>
+<p><a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/DAGScheduler.scala#L124-L170">Scheduler indexes</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/Stage.scala#L114-L150">stage attempts</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/ShuffleMapStage.scala#L111-L132">shuffle availability</a> ·
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/ResultStage.scala#L42-L65">unfinished result outputs</a>.</p>
+<h2 id="design-patterns-used">Design patterns used</h2>
+<p><strong>Event queue and dispatcher (behavioral).</strong> <code>JobSubmitted</code>, <code>CompletionEvent</code>
+and <code>JobCancelled</code> enter one queue instead of allowing submitter and executor
+threads to mutate the same stage maps. This gives one order for competing
+completion/cancellation decisions; it also means a slow handler delays events
+for <em>other</em> jobs. <code>SparkListener</code> notifications report those decisions; they
+are not the commands that release waiting stages. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/util/EventLoop.scala#L35-L64">Event loop</a> ·
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/DAGScheduler.scala#L5460-L5530">dispatch</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/DAGScheduler.scala#L2100-L2130">child-stage recheck</a>.</p>
+<h2 id="apiinterface-definitions">API/interface definitions</h2>
+<table>
+<thead>
+<tr>
+<th>Caller and input</th>
+<th>Output or side effect</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>SparkContext.runJob</code> → <code>runJob(rdd, func, partitions, callSite, resultHandler, properties)</code></td>
+<td><code>submitJob</code> validates indices, returns a <code>JobWaiter</code>, and posts <code>JobSubmitted</code> for nonempty work. The synchronous caller waits on the waiter&#39;s future; zero requested partitions succeed without a task set. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/DAGScheduler.scala#L1827-L1897">Submission</a></td>
+</tr>
+<tr>
+<td>DAG scheduler → <code>TaskScheduler.submitTasks(TaskSet)</code></td>
+<td>One batch of missing <code>ShuffleMapTask</code>s or <code>ResultTask</code>s tagged with stage ID, attempt, job priority, stage properties and resource profile. Preferred locations are hints, not assignments. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/DAGScheduler.scala#L3441-L3490">Task construction</a></td>
+</tr>
+<tr>
+<td><code>TaskSetManager</code> → <code>dagScheduler.taskStarted(...)</code> / <code>taskEnded(...)</code></td>
+<td>Posts <code>BeginEvent</code> or <code>CompletionEvent(task, reason, result, accumUpdates, metricPeaks, taskInfo)</code>. A map success normally carries <code>MapStatus</code>; a result success carries the value for the job&#39;s output index. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/DAGScheduler.scala#L538-L562">Event inputs</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/DAGScheduler.scala#L4015-L4066">result delivery</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/DAGScheduler.scala#L4092-L4151">map registration</a></td>
+</tr>
+<tr>
+<td>Task set abort or job cancellation</td>
+<td><code>taskSetFailed</code> posts <code>TaskSetFailed</code>; an existing stage is aborted. <code>JobCancelled</code> instead targets a job, failing its listener and cancelling only its independent stages. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/DAGScheduler.scala#L2563-L2597">Abort handler</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/DAGScheduler.scala#L5282-L5324">cancellation</a></td>
+</tr>
+</tbody></table>
+<h2 id="implementation-notes-follow-two-map-partitions-to-one-result">Implementation notes: follow two map partitions to one result</h2>
+<ol>
+<li>Suppose an action asks for <strong>partition 7</strong> of a shuffled RDD and neither of
+its two upstream map outputs exists. <code>handleJobSubmitted</code> records the job
+and calls <code>submitStage(finalStage)</code>. <code>getMissingParentStages</code> traverses
+narrow dependencies, prunes fully cached RDDs, and finds the unavailable
+shuffle parent. The map stage is submitted first; the result stage waits.
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/DAGScheduler.scala#L2773-L2801">Job registration</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/DAGScheduler.scala#L1126-L1161">parent search</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/DAGScheduler.scala#L2887-L2912">submit decision</a>.</li>
+<li><code>submitMissingTasks</code> obtains missing partitions, computes preferred
+locations, creates the stage attempt and broadcasts the common task binary
+(<code>RDD</code> plus shuffle dependency, or <code>RDD</code> plus result function). The map task
+set contains two tasks, not two YARN requests. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/DAGScheduler.scala#L3219-L3259">Find missing work</a> ·
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/DAGScheduler.scala#L3350-L3414">attempt and broadcast</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/DAGScheduler.scala#L3441-L3490">emit task set</a>.</li>
+<li>Map successes register <code>(shuffleId, map partition, MapStatus)</code>. With no
+pending map partitions, the scheduler checks availability again; push-based
+shuffle can also require merge finalization. It then revisits waiting
+children. The result task for partition <code>7</code> has <strong>output index <code>0</code></strong> in
+this job. Its first accepted result marks <code>job.finished(0)</code> and calls
+<code>job.listener.taskSucceeded(0, value)</code>; the waiter invokes the registered
+handler and completes the future. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/DAGScheduler.scala#L4092-L4151">Map completion</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/DAGScheduler.scala#L4726-L4756">release or recompute</a> ·
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/DAGScheduler.scala#L4015-L4066">result delivery</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/JobWaiter.scala#L63-L77">waiter</a>.</li>
+</ol>
+<p><strong>Retry and late messages.</strong> A current-attempt <code>FetchFailed</code> is different from
+a task exception: the DAG scheduler can invalidate a map output, mark consumer
+and producer for resubmission, and coalesce failures via a delayed
+<code>ResubmitFailedStages</code> (200 ms here). Stage-attempt limits still apply. A fetch
+failure from an <em>older</em> consumer attempt is ignored. Conversely, a valid older
+success can notify the current task set that a partition is done; invalidated
+attempts and stale executor epochs have guards. If the stage is gone, a
+<code>TaskEnd</code> is still posted for listeners without resurrecting it.
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/DAGScheduler.scala#L4152-L4172">Fetch-failure branches</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/DAGScheduler.scala#L4190-L4249">invalidation</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/DAGScheduler.scala#L4281-L4319">retry queue</a> ·
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/DAGScheduler.scala#L5558-L5564">retry delay</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/DAGScheduler.scala#L3992-L4009">older success</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/DAGScheduler.scala#L3904-L3959">late event</a>.</p>
+<p><strong>Scope exception.</strong> This revision also has <code>PipelinedShuffleDependency</code>:
+eligible consumers may run alongside already-running producers after group
+admission. Their successful completion events can be deferred until the
+producers finish. That is not how an ordinary <code>groupBy</code> shuffle becomes ready.
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/DAGScheduler.scala#L2641-L2681">Admission</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/DAGScheduler.scala#L2927-L2968">co-scheduling</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/DAGScheduler.scala#L3904-L3959">deferred completion</a>.</p>
+<h2 id="scalability-and-performance-considerations">Scalability and performance considerations</h2>
+<p>Repeatedly traversing large lineages and serializing common closures costs driver
+time. Spark eagerly computes RDD partition metadata <em>outside</em> the event loop
+and broadcasts shared stage bytes rather than embedding the whole closure in
+each task. <strong>Diagnostic:</strong> a driver log naming the missing parent followed by
+<code>Resubmitting ... due to fetch failure</code> points to shuffle recovery. Correlate
+the producer&#39;s shuffle/map index with the consumer&#39;s stage attempt before
+investigating container capacity. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/DAGScheduler.scala#L1827-L1897">Partition precomputation</a> ·
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/DAGScheduler.scala#L3350-L3414">broadcast</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/DAGScheduler.scala#L4281-L4319">resubmission log</a>.</p>
+</main></html>

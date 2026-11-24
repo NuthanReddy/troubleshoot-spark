@@ -1,0 +1,66 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>FileCommitProtocol: staging and finalizing V1 file output · Troubleshoot Spark</title><link rel="stylesheet" href="../style.css"><main class="reader"><nav><a href=".././#map">Diagnostic map</a> · <a href="../guide.html">Lifecycle</a> · <a href="../scenarios.html">Cases</a> · <a href="../components/index.html">Components</a></nav><h1 id="filecommitprotocol-staging-and-finalizing-v1-file-output">FileCommitProtocol: staging and finalizing V1 file output</h1>
+<p><a href="index.html">component index</a></p>
+<p><code>FileCommitProtocol</code> separates <strong>writing records</strong> from <strong>committing their files</strong>. For a Spark SQL V1 write, <a href="file-format-writer.html">FileFormatWriter</a> delegates attempt paths, task completion, and job completion to one protocol instance per write, serialized to executor tasks. The default SQL implementation at this revision, <code>SQLHadoopMapReduceCommitProtocol</code>, adapts a Hadoop <strong><code>mapreduce.OutputCommitter</code></strong>. It is distinct from both the Parquet encoder and the <a href="output-commit-coordinator.html">driver&#39;s per-task permission service</a>. DataSource V1 here does not mean Hadoop <code>FileOutputCommitter</code> algorithm version 1.</p>
+<h2 id="flow-at-a-glance">Flow at a glance</h2>
+<ol>
+<li><strong>Executor writer</strong>: Stage new east and west files for a dynamic partition overwrite.</li>
+<li><strong>Task protocol</strong>: Commit the attempt output and report east and west as touched directories.</li>
+<li><strong>Driver protocol</strong>: Run Hadoop job commit, then replace east and west from staging.</li>
+</ol>
+<blockquote>
+<p><strong>Watch for:</strong> North keeps its old data because no task touched it, and east and west are replaced separately rather than in one atomic swap.</p>
+</blockquote>
+<details>
+<summary>Show the animated flow</summary>
+
+<p><img src="visuals/file-commit-protocol.svg" alt="The task stages east and west; after Hadoop job commit the driver replaces those two directories and leaves north unchanged."></p>
+</details>
+
+<h2 id="what-state-travels-where">What state travels where?</h2>
+<table>
+<thead>
+<tr>
+<th>Owner</th>
+<th>Inputs, state, and outputs</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Driver</td>
+<td>The V1 command selects the protocol with a write UUID, target path, and dynamic-overwrite flag. <code>setupJob(JobContext)</code> creates the underlying committer and calls Hadoop setup. The Hadoop committer itself is transient: tasks do not share the driver&#39;s object.</td>
+</tr>
+<tr>
+<td>Executor attempt</td>
+<td><code>setupTask(TaskAttemptContext)</code> obtains its own Hadoop committer and initializes <code>addedAbsPathFiles</code> (temporary file to final absolute file) and <code>partitionPaths</code> (touched default directories for dynamic overwrite). Path requests take a directory and <code>FileNameSpec</code>; they return <strong>where the format writer should write</strong>, not where the file can already be read.</td>
+</tr>
+<tr>
+<td>Back to driver</td>
+<td><code>commitTask</code> returns <code>TaskCommitMessage</code>. The Hadoop adapter&#39;s payload is an immutable map/set pair, <strong>not</strong> the file contents. <code>onTaskCommit</code> is an optional per-result hook; <code>commitJob(job, messages)</code> finalizes the job. <code>abortTask</code> and <code>abortJob</code> are best effort.</td>
+</tr>
+</tbody></table>
+<p>See the <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/internal/io/FileCommitProtocol.scala#L29-L76">protocol contract</a>, <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/catalyst/src/main/scala/org/apache/spark/sql/internal/SQLConf.scala#L3053-L3069">default configuration</a>, <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/SQLHadoopMapReduceCommitProtocol.scala#L33-L72">SQL committer selection</a>, and <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/internal/io/HadoopMapReduceCommitProtocol.scala#L71-L121">per-attempt state</a>. <code>spark.sql.sources.commitProtocolClass</code> selects the Spark adapter; <code>spark.sql.sources.outputCommitterClass</code> can override the Hadoop committer. Those settings do not name the same interface.</p>
+<h2 id="trace-overwrite-two-hdfs-directory-partitions-dynamically">Trace: overwrite two HDFS directory partitions dynamically</h2>
+<p>Assume <code>hdfs:///reports/orders</code> has <code>region=east</code>, <code>region=west</code>, and <code>region=north</code>. The new data touches only east and west. This trace uses the SQL Hadoop protocol with a <code>FileOutputCommitter</code>; another committer need not have the same paths or publication timing.</p>
+<figure class="source-figure"><a href="../diagrams/components-file-commit-protocol-1.svg" title="Open diagram at full size"><img loading="lazy" src="../diagrams/components-file-commit-protocol-1.svg" alt="Sequence diagram for components file commit protocol; open to enlarge"></a><figcaption>Sequence diagram · <a href="../diagrams/components-file-commit-protocol-1.svg">Open full size</a></figcaption><details><summary>Text equivalent</summary><pre>sequenceDiagram
+    participant D as Driver protocol
+    participant E as Executor writer and protocol
+    participant C as Driver commit coordinator
+    participant H as Hadoop committer and filesystem
+    D-&gt;&gt;H: setupJob with staging output path
+    E-&gt;&gt;H: setupTask, then write to attempt work path
+    opt Hadoop needs task commit and coordination enabled
+        E-&gt;&gt;C: May this attempt commit this partition?
+        C--&gt;&gt;E: Permission only
+    end
+    E-&gt;&gt;H: Commit task output if needed and permitted
+    E--&gt;&gt;D: Map of absolute files and set of touched directories
+    D-&gt;&gt;H: Hadoop commitJob
+    D-&gt;&gt;H: Replace touched directories from Spark staging, then clean staging</pre></details></figure>
+<ol>
+<li>The V1 command detects dynamic partition overwrite and directs this job to <code>.spark-staging-&lt;write UUID&gt;</code> under the target. It does <strong>not</strong> pre-delete all matching partitions. For a normal relative path, the adapter uses the <code>FileOutputCommitter</code> work path and adds <code>region=east</code> and the filename. The filename includes the Spark split number and write ID; the caller supplies a suffix (for example a counter) when one task writes multiple files. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/InsertIntoHadoopFsRelationCommand.scala#L66-L77">Mode selection</a>, <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/InsertIntoHadoopFsRelationCommand.scala#L177-L205">staging decision</a>, <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/internal/io/HadoopMapReduceCommitProtocol.scala#L123-L147">path allocation</a>.</li>
+<li>A custom <strong>absolute</strong> partition location takes a different route: allocate a unique staging file and remember its final absolute path in <code>addedAbsPathFiles</code>. After the writer closes its files, <code>commitTask</code> delegates to <code>SparkHadoopMapRedUtil</code>: if Hadoop needs a commit and coordination is enabled, ask the driver; if allowed, invoke Hadoop <code>commitTask</code>. A grant is not a filesystem operation. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/internal/io/HadoopMapReduceCommitProtocol.scala#L149-L169">Absolute path and naming</a>, <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/internal/io/HadoopMapReduceCommitProtocol.scala#L280-L294">task message</a>, <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/mapred/SparkHadoopMapRedUtil.scala#L64-L102">permission gate</a>.</li>
+<li>The driver calls Hadoop <code>commitJob</code> <strong>first</strong>. For a valid output path it then unions the messages, creates absolute destination parents and moves custom-location files if any. In dynamic mode it replaces each touched default directory from Spark staging and finally deletes staging. East and west are handled separately; north was not in the messages and is left alone. For a non-<code>FileOutputCommitter</code> in dynamic mode this adapter first checks the staged default partitions still exist before deleting destinations. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/internal/io/HadoopMapReduceCommitProtocol.scala#L189-L211">Hadoop commit and preflight</a>, <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/internal/io/HadoopMapReduceCommitProtocol.scala#L212-L253">moves and cleanup</a>.</li>
+</ol>
+<h2 id="failures-and-visibility">Failures and visibility</h2>
+<p><code>Using output committer class ...</code> identifies which implementation to inspect. Hadoop <code>FileOutputCommitter</code> algorithms 1 and 2 perform different amounts of promotion at task commit versus job commit; custom committers and object stores can differ again. A successful task or a visible <code>part-...</code> file is <strong>not proof that the job committed atomically</strong>.</p>
+<p>If a task fails, inspect its Hadoop attempt ID and temporary work path. If all tasks finished but the driver reports <code>Failed to rename</code>, inspect the named source and destination and the driver-side commit exception. For dynamic overwrite there are separate delete/rename operations per partition; later failure need not restore an earlier directory. A killed driver may never call abort, and IO failures during abort are logged. Keep evidence of the attempt paths and selected committer rather than treating leftover staging as published data. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/internal/io/HadoopMapReduceCommitProtocol.scala#L44-L69">Algorithm differences</a>, <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/internal/io/HadoopMapReduceCommitProtocol.scala#L255-L278">job abort</a>, <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/internal/io/HadoopMapReduceCommitProtocol.scala#L302-L321">task abort</a>.</p>
+</main></html>

@@ -1,0 +1,65 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>YARN submission client: building the first container's launch instructions · Troubleshoot Spark</title><link rel="stylesheet" href="../style.css"><main class="reader"><nav><a href=".././#map">Diagnostic map</a> · <a href="../guide.html">Lifecycle</a> · <a href="../scenarios.html">Cases</a> · <a href="../components/index.html">Components</a></nav><h1 id="yarn-submission-client-building-the-first-container39s-launch-instructions">YARN submission client: building the first container&#39;s launch instructions</h1>
+<p><a href="index.html">Component index</a> · <a href="spark-submit.html">Previous: spark-submit</a> · <a href="application-master.html">Next: ApplicationMaster</a></p>
+<p>Spark&#39;s <code>org.apache.spark.deploy.yarn.Client</code> translates one Spark submission into a YARN <code>ApplicationSubmissionContext</code>. It runs on the submit host, wrapping Hadoop&#39;s <code>YarnClient</code>. In <strong>cluster</strong> mode <code>YarnClusterApplication</code> owns the call; in <strong>client</strong> mode the already-running driver&#39;s <code>YarnClientSchedulerBackend</code> owns it. It is <strong>not</strong> the AM-side <code>YarnRMClient</code>: the submission client requests an application ID and submits an AM specification, not executor containers. This page follows a managed AM. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/deploy/yarn/Client.scala#L66-L138">Client fields</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/deploy/yarn/Client.scala#L1829-L1841">cluster caller</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/scheduler/cluster/YarnClientSchedulerBackend.scala#L49-L103">client caller</a></p>
+<h2 id="flow-at-a-glance">Flow at a glance</h2>
+<ol>
+<li><strong>ResourceManager</strong>: Gives the submission client an application ID.</li>
+<li><strong>Submission client</strong>: Stages the local script and submits the cluster-mode AM launch record.</li>
+<li><strong>NodeManager</strong>: Fetches or reuses the listed files for the AM container.</li>
+</ol>
+<blockquote>
+<p><strong>Key distinction:</strong> Staging makes a file available to the cluster. Localization makes it visible in one container&#39;s working directory.</p>
+</blockquote>
+<details>
+<summary>Show the animated flow</summary>
+
+<p><img src="visuals/yarn-client.svg" alt="The client gets an application ID and submits launch instructions; the selected NodeManager localizes the files for the AM."></p>
+</details>
+
+<h2 id="two-different-records-go-to-yarn">Two different records go to YARN</h2>
+<table>
+<thead>
+<tr>
+<th>Record</th>
+<th>Who consumes it and why</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>ApplicationSubmissionContext</code></td>
+<td>The <a href="resource-manager.html">ResourceManager (RM)</a> receives the application ID, name, queue, AM resource capability, optional attempt/placement settings, and the nested AM container specification. This asks YARN to run <strong>one AM</strong>; it does not reserve all the executors at submission time. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/deploy/yarn/Client.scala#L273-L324">Submission context</a></td>
+</tr>
+<tr>
+<td><code>ContainerLaunchContext</code></td>
+<td>YARN passes these instructions to the selected <a href="node-manager.html">NodeManager (NM)</a>: a map from container filenames to <code>LocalResource</code> descriptors, environment, Java command, credentials, and ACLs. Cluster mode invokes <code>ApplicationMaster</code> with a user class and the script basename; client mode invokes <code>ExecutorLauncher</code> with the external driver&#39;s <code>host:port</code>. Both get paths to the Spark properties and distributed-cache metadata. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/deploy/yarn/Client.scala#L1033-L1049">Resources/environment</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/deploy/yarn/Client.scala#L1119-L1195">command/credentials</a></td>
+</tr>
+</tbody></table>
+<h2 id="trace-orderspy-and---py-files-ruleszip">Trace <code>orders.py</code> and <code>--py-files rules.zip</code></h2>
+<ol>
+<li><strong>Get an identity, not a grant.</strong> <code>submitApplication()</code> initializes the Hadoop client with <code>YarnConfiguration</code>, calls <code>createApplication()</code>, saves <code>appId</code>, and derives <code>stagingDirPath</code>. By default the path is <code>.sparkStaging/&lt;applicationId&gt;</code> under the user&#39;s home on the default filesystem. <code>verifyClusterResources</code> checks <strong>per-container</strong> limits: executor heap + off-heap + overhead + explicit PySpark worker memory, and separately AM heap + overhead. Cluster mode uses the driver memory/cores for the AM; client mode uses the AM settings because the driver is elsewhere. This does not test current queue capacity. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/deploy/yarn/Client.scala#L194-L238">Order and staging base</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/deploy/yarn/Client.scala#L66-L138">resource choices</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/deploy/yarn/Client.scala#L404-L432">memory checks</a></li>
+<li><strong>Stage shareable bytes.</strong> <code>prepareLocalResources</code> builds a manifest. For a submit-host <code>file:</code> dependency, <code>copyFileToRemote</code> uploads to staging (typically HDFS). A dependency already on the same remote filesystem can be referenced in place. A <code>local:</code> dependency denotes an already-installed cluster path and is not uploaded. These are different from <code>spark-submit</code> downloading a remote dependency to its own temporary directory. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/deploy/yarn/Client.scala#L434-L477">Copy rules</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/deploy/yarn/Client.scala#L578-L619">URI and link-name rules</a></li>
+<li><strong>Describe who needs which bytes.</strong> In cluster mode the primary <code>orders.py</code> is AM-only; the client-mode driver already has its copy. <code>rules.zip</code> goes into the shared dependency metadata, as do eligible PySpark runtime libraries. <code>ClientDistributedCacheManager</code> records a link name, URL, type, size, timestamp, and visibility. AM-only entries go into the AM map but not the executor manifest. Spark creates a config archive containing Spark properties and executor cache metadata, uploads it, and advertises it as an <code>ARCHIVE</code> under <code>__spark_conf__</code>. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/deploy/yarn/Client.scala#L783-L837">Python resources and archive</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/deploy/yarn/ClientDistributedCacheManager.scala#L62-L100">manifest writer</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/deploy/yarn/Client.scala#L928-L959">archive contents</a></li>
+<li><strong>Submit, then localize.</strong> The client attaches the AM launch record and calls <code>yarnClient.submitApplication(appContext)</code>. Now the RM can arrange the first container. Its NM fetches or reuses the named resources and makes them available in that container&#39;s working directory. The client never copies files into a worker&#39;s process directory. The AM later reconstructs the executor <code>LocalResource</code> map for executor launches on other NMs. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/deploy/yarn/Client.scala#L194-L238">Submission call</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/deploy/yarn/ApplicationMaster.scala#L141-L190">AM reconstruction</a></li>
+</ol>
+<p>The client&#39;s state reflects this handoff: <code>appId</code> correlates reports; <code>stagingDirPath</code> supports cleanup; <code>distCacheMgr</code> and <code>cachedResourcesConf</code> build the manifests; <code>launcherBackend</code> reports launcher state. None is a registry of running executors.</p>
+<h2 id="failure-monitoring-and-cleanup">Failure, monitoring, and cleanup</h2>
+<table>
+<thead>
+<tr>
+<th>Observation</th>
+<th>What it means / where to look</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Application ID printed, then <code>above the max threshold</code></td>
+<td>The client got a new ID but refused the memory request <strong>before submitting</strong> the AM. Look at submit-side memory arithmetic; increasing queue capacity cannot help. Submission exceptions after a staging path was set trigger a cleanup attempt unless preservation is enabled. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/deploy/yarn/Client.scala#L404-L432">Checks</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/deploy/yarn/Client.scala#L236-L266">error cleanup</a></td>
+</tr>
+<tr>
+<td>File exists on the submit host but is absent in the AM</td>
+<td>Look for upload or same-filesystem reuse on the submit host, then the manifest&#39;s URI/type/link name. After submission, check the selected NM&#39;s localization diagnostics. A local path existing on the submit host is not evidence it exists on that worker. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/deploy/yarn/Client.scala#L434-L477">Copy rules</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/deploy/yarn/ClientDistributedCacheManager.scala#L62-L100">manifest</a></td>
+</tr>
+<tr>
+<td><code>RUNNING</code> or a successful return from the launcher</td>
+<td>Neither proves <code>orders.py</code> finished. <code>monitorApplication</code> distinguishes YARN application state from final status. Normal cluster <code>run()</code> polls to completion and raises on failed/killed or undefined final status; cluster fire-and-forget without a connected launcher backend only inspects one report. In client mode the backend initially waits for <code>RUNNING</code>, then monitors asynchronously and stops the client on driver shutdown. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/deploy/yarn/Client.scala#L1210-L1282">Report polling</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/deploy/yarn/Client.scala#L1386-L1412">cluster result</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/scheduler/cluster/YarnClientSchedulerBackend.scala#L49-L103">client startup</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/scheduler/cluster/YarnClientSchedulerBackend.scala#L174-L192">client shutdown</a></td>
+</tr>
+</tbody></table>
+</main></html>

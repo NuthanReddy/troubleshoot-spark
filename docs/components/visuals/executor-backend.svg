@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="360" height="304" viewBox="0 0 360 304" role="img" aria-labelledby="flow-title" aria-describedby="flow-desc">
+<title id="flow-title">Executor backend: from YARN container to schedulable executor: Flow at a glance</title>
+<desc id="flow-desc">1. Driver: Register the executor with zero free cores. 2. Executor backend: Build the local runtime and report it ready. 3. Driver backend: Offer the executor&apos;s cores to the scheduler.</desc>
+<style>
+@keyframes handoff {
+  0%, 18% { transform: translateY(0); }
+  40%, 58% { transform: translateY(98px); }
+  82%, 100% { transform: translateY(196px); }
+}
+@media (prefers-reduced-motion: no-preference) {
+  #focus { display: inline; animation: handoff 4.6s ease-in-out 1 both; }
+}
+@media (prefers-reduced-motion: reduce) { #focus { display: none; animation: none; } }
+</style>
+<rect x="1" y="1" width="358" height="302" rx="13" fill="#f2f7f6" stroke="#b8cbc8"/>
+<path d="M24 30 V226" fill="none" stroke="#577d7b" stroke-width="2"/>
+<g font-family="Arial, Helvetica, sans-serif">
+  <rect x="48" y="10" width="302" height="88" rx="9" fill="#fff" stroke="#a8bdbb"/>
+  <circle cx="24" cy="30" r="12" fill="#184d50"/>
+  <text x="24" y="36" text-anchor="middle" font-size="17" font-weight="700" fill="#fff">1</text>
+  <text font-size="19" font-weight="700" fill="#12383d"><tspan x="62" y="36">Driver</tspan></text>
+  <text font-size="18" fill="#223a40"><tspan x="62" y="61">Register the executor</tspan><tspan x="62" y="84">with zero free cores.</tspan></text>
+  <rect x="48" y="108" width="302" height="88" rx="9" fill="#fff" stroke="#a8bdbb"/>
+  <circle cx="24" cy="128" r="12" fill="#184d50"/>
+  <text x="24" y="134" text-anchor="middle" font-size="17" font-weight="700" fill="#fff">2</text>
+  <text font-size="19" font-weight="700" fill="#12383d"><tspan x="62" y="134">Executor backend</tspan></text>
+  <text font-size="18" fill="#223a40"><tspan x="62" y="159">Build the local runtime</tspan><tspan x="62" y="182">and report it ready.</tspan></text>
+  <rect x="48" y="206" width="302" height="88" rx="9" fill="#fff" stroke="#a8bdbb"/>
+  <circle cx="24" cy="226" r="12" fill="#184d50"/>
+  <text x="24" y="232" text-anchor="middle" font-size="17" font-weight="700" fill="#fff">3</text>
+  <text font-size="19" font-weight="700" fill="#12383d"><tspan x="62" y="232">Driver backend</tspan></text>
+  <text font-size="18" fill="#223a40"><tspan x="62" y="257">Offer the executor&apos;s cores</tspan><tspan x="62" y="280">to the scheduler.</tspan></text>
+</g>
+<g id="focus" display="none" aria-hidden="true">
+  <circle cx="24" cy="30" r="16" fill="none" stroke="#17484d" stroke-width="2"/>
+  <path d="M40 25 l6 5 -6 5 z" fill="#17484d"/>
+</g>
+</svg>

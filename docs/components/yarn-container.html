@@ -1,0 +1,91 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>YARN container: one allocation, several lifecycle milestones · Troubleshoot Spark</title><link rel="stylesheet" href="../style.css"><main class="reader"><nav><a href=".././#map">Diagnostic map</a> · <a href="../guide.html">Lifecycle</a> · <a href="../scenarios.html">Cases</a> · <a href="../components/index.html">Components</a></nav><h1 id="yarn-container-one-allocation-several-lifecycle-milestones">YARN container: one allocation, several lifecycle milestones</h1>
+<p><a href="index.html">component index</a> | <a href="../guide.html">PySpark on YARN walkthrough</a></p>
+<p>A YARN container is a resource grant on a named node and the lifecycle YARN
+tracks under its <code>ContainerId</code>. <strong>It is not another daemon, a Spark executor
+ID, a task, or necessarily a Docker container.</strong> It has no RPC listener of
+its own. The host and port in the grant identify the <a href="node-manager.html">NodeManager (NM)</a>, not the
+executor. The executor JVM need not even exist yet.</p>
+<h2 id="flow-at-a-glance">Flow at a glance</h2>
+<ol>
+<li><strong>ResourceManager</strong>: Grants one container with two vcores on worker-b.</li>
+<li><strong>ApplicationMaster</strong>: Sends the grant token and launch instructions to that node.</li>
+<li><strong>NodeManager</strong>: Starts the executor JVM, which then registers with the Spark driver.</li>
+</ol>
+<blockquote>
+<p><strong>Key distinction:</strong> YARN can grant both vcores before the executor process even exists.</p>
+</blockquote>
+<details>
+<summary>Show the animated flow</summary>
+
+<p><img src="visuals/yarn-container.svg" alt="One container grant on worker-b leads to a NodeManager launch and then Spark executor registration"></p>
+</details>
+
+<h2 id="who-owns-which-record">Who owns which record?</h2>
+<p>For executor capacity, the <a href="application-master.html">ApplicationMaster (AM)</a> deals
+with the <a href="resource-manager.html">ResourceManager (RM)</a> first and the assigned NM second.</p>
+<table>
+<thead>
+<tr>
+<th>Record and owner</th>
+<th>Concrete input</th>
+<th>Result and meaning</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>ResourceRequest</code>, AM to RM for executor capacity</td>
+<td>Count, priority, capability (e.g. memory and vcores), and host/rack/<code>*</code> preference</td>
+<td>Demand the scheduler tries to place. An outstanding ask has no assigned node or process.</td>
+</tr>
+<tr>
+<td><code>Container</code>, RM to AM in <code>AllocateResponse</code></td>
+<td>A fit between an outstanding ask, queue policy, and available node resources</td>
+<td>Grant with <code>ContainerId</code>, <code>NodeId</code>, capacity, priority, and a container token. A container ID identifies an allocating application attempt and a container sequence, not an OS PID.</td>
+</tr>
+<tr>
+<td><code>StartContainerRequest</code>, launcher to chosen NM</td>
+<td>The grant&#39;s container token <strong>plus</strong> a <code>ContainerLaunchContext</code>: commands, environment, local resources, credentials</td>
+<td>NM authorization and asynchronous start. The NM token used for the caller&#39;s RPC and the container token proving the specific grant serve different purposes.</td>
+</tr>
+<tr>
+<td><code>ContainerStatus</code>, NM to RM and onward to AM</td>
+<td>Node-side state, process exit, resource-limit kill, or cleanup event</td>
+<td>ID, state, exit status, and diagnostic text. Spark separately records executor registration and the success or failure of individual task attempts.</td>
+</tr>
+</tbody></table>
+<p>The scheduler grants the allocation; the NM creates and monitors the local
+process tree. A normal child exit, an AM stop/release, preemption, or application
+cleanup can end it. The RM accounts for the released resources. A replacement
+executor normally receives a <strong>new</strong> allocation; retrying one Spark task can
+reuse an executor and need not allocate anything.</p>
+<h2 id="worked-flow-where-two-spark-slots-come-from">Worked flow: where two Spark slots come from</h2>
+<figure class="source-figure"><a href="../diagrams/components-yarn-container-1.svg" title="Open diagram at full size"><img loading="lazy" src="../diagrams/components-yarn-container-1.svg" alt="Flowchart for components yarn container; open to enlarge"></a><figcaption>Flowchart · <a href="../diagrams/components-yarn-container-1.svg">Open full size</a></figcaption><details><summary>Text equivalent</summary><pre>flowchart TD
+    A[RM grants one container on worker-b] --&gt; B[AM sends launch context to that NM]
+    B --&gt; C[NM localizes files and starts JVM]
+    C --&gt; D[Executor registers its Spark ID with the driver]
+    D --&gt; E[Task thread for partition 0]
+    D --&gt; F[Task thread for partition 1]
+    E --&gt; G[Executor remains available for later tasks]
+    F --&gt; G</pre></details></figure>
+<ol>
+<li>The walkthrough requests <strong>three two-core executors</strong>. The cluster-mode AM/driver needs its own container. At full allocation this is four YARN containers, not one per partition. In client mode the AM still has a container, but the driver runs on the submit host.</li>
+<li>For one illustrative executor, 4,096 MiB heap + 1,024 MiB overhead, with no configured off-heap or separate PySpark memory, yields a <strong>5,120 MiB</strong> memory request before YARN normalization. Spark adds those latter two allocations when configured and applicable. The grant is a process-tree budget, not the JVM <code>-Xmx</code> value; vcores also do not necessarily mean dedicated physical cores.</li>
+<li>The RM places the executor grant. The AM maps it to a Spark executor ID and sends the launch context directly to the NM. For the <strong>AM</strong> container the caller is instead the RM, using the client&#39;s previously submitted launch context.</li>
+<li>After registration the driver may run two ordinary one-CPU tasks concurrently in that executor. Finishing either task frees a Spark slot; it does not release the container. If Python workers are needed they are child processes in the same allocation, not new YARN containers.</li>
+<li>On shutdown or loss, match the container ID in the AM logs to its Spark executor ID. A final YARN status explains the allocation&#39;s end; use Spark&#39;s event or task logs to find which partition attempts were affected.</li>
+</ol>
+<h2 id="interpreting-state-and-failure">Interpreting state and failure</h2>
+<ul>
+<li><strong>Granted, not launched:</strong> there may be no NM record yet. Check the AM&#39;s launch request and the assigned node, not a nonexistent executor log.</li>
+<li><strong><code>RUNNING</code>, no executor:</strong> in Hadoop 3.4.1 <code>ContainerImpl</code> maps even its internal <code>LOCALIZING</code> and <code>SCHEDULED</code> states to public <code>RUNNING</code>, with substate <code>SCHEDULED</code>. Check the substate or localization logs first, then JVM startup and driver registration.</li>
+<li><strong><code>COMPLETE</code>, unexpected loss:</strong> compare exit status and diagnostics, not just the word <code>COMPLETE</code>. <code>PREEMPTED</code> (<code>-102</code>) signals scheduler action; <code>KILLED_EXCEEDED_PMEM</code> (<code>-104</code>) signals a physical-memory limit. An ordinary nonzero process exit calls for inspecting its <code>stderr</code>.</li>
+</ul>
+<p>Use <code>yarn container -list &lt;app_attempt_id&gt;</code> and <code>yarn container -status &lt;container_id&gt;</code>
+to follow the YARN record. The Spark UI&#39;s Executors tab answers
+the different question of whether the driver ever knew that executor.</p>
+<h2 id="sources">Sources</h2>
+<ul>
+<li>Hadoop 3.4.1: <a href="https://hadoop.apache.org/docs/r3.4.1/hadoop-yarn/hadoop-yarn-site/WritingYarnApplications.html">application launch flow</a> and <a href="https://hadoop.apache.org/docs/r3.4.1/hadoop-yarn/hadoop-yarn-site/YarnCommands.html">YARN diagnostic commands</a>.</li>
+<li>Hadoop 3.4.1 source: <a href="https://github.com/apache/hadoop/blob/4d7825309348956336b8f06a08322b78422849b1/hadoop-yarn-project/hadoop-yarn/hadoop-yarn-api/src/main/proto/yarn_protos.proto">allocation, launch context, and status fields</a>, <a href="https://github.com/apache/hadoop/blob/4d7825309348956336b8f06a08322b78422849b1/hadoop-yarn-project/hadoop-yarn/hadoop-yarn-server/hadoop-yarn-server-nodemanager/src/main/java/org/apache/hadoop/yarn/server/nodemanager/containermanager/container/ContainerImpl.java#L751-L805">node-side state mapping</a>, and <a href="https://github.com/apache/hadoop/blob/4d7825309348956336b8f06a08322b78422849b1/hadoop-yarn-project/hadoop-yarn/hadoop-yarn-api/src/main/java/org/apache/hadoop/yarn/api/records/ContainerExitStatus.java">exit-status definitions</a>.</li>
+<li>Spark integration: <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/resource/ResourceProfile.scala#L561-L613">executor memory calculation</a> and <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/deploy/yarn/YarnAllocator.scala#L755-L809">mapping grants to executor launches</a>.</li>
+</ul>
+</main></html>

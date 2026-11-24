@@ -1,0 +1,85 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Spark SQL physical planner: choosing the operators · Troubleshoot Spark</title><link rel="stylesheet" href="../style.css"><main class="reader"><nav><a href=".././#map">Diagnostic map</a> · <a href="../guide.html">Lifecycle</a> · <a href="../scenarios.html">Cases</a> · <a href="../components/index.html">Components</a></nav><h1 id="spark-sql-physical-planner-choosing-the-operators">Spark SQL physical planner: choosing the operators</h1>
+<p><a href="index.html">component index</a> | <a href="adaptive-query-execution.html">Adaptive Query Execution</a></p>
+<p>The planner answers <strong>how should this logical query run?</strong> It returns a tree of
+<code>SparkPlan</code> operators, not rows, Spark stages, or YARN container requests. In classic
+PySpark it runs in the <strong>driver JVM</strong>: in the ApplicationMaster container in YARN
+cluster mode, or on the submit host in client mode. <code>SessionState</code> supplies the
+<code>SparkPlanner</code>; each <code>QueryExecution</code> keeps its own plans. An action needs the plan,
+but <code>explain</code> can ask for it before the data is processed.</p>
+<h2 id="flow-at-a-glance">Flow at a glance</h2>
+<ol>
+<li><strong>Logical join</strong>: The planner receives an optimized left join of orders and regions.</li>
+<li><strong>Build side</strong>: The planner picks a hash join that broadcasts the small right side, regions.</li>
+<li><strong>Prepared plan</strong>: A preparation rule adds the exchange that will broadcast regions.</li>
+</ol>
+<blockquote>
+<p><strong>Key distinction:</strong> The SQL planner chooses operators; the core schedulers later form stages and launch tasks.</p>
+</blockquote>
+<details>
+<summary>Show the animated flow</summary>
+
+<p><img src="visuals/sql-planner.svg" alt="A logical left join becomes a broadcast hash join with an exchange on the regions side"></p>
+</details>
+
+<h2 id="what-crosses-each-interface">What crosses each interface</h2>
+<table>
+<thead>
+<tr>
+<th>Handoff</th>
+<th>Input, output, and owner</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Analyzer and optimizer to planner</td>
+<td><code>analyzer.executeAndCheck</code> resolves names and types. The optimizer rewrites the resolved logical tree. <code>QueryExecution</code> keeps <code>analyzed</code>, <code>optimizedPlan</code>, and the later physical plans separately; it passes a clone of the optimized tree to <code>createSparkPlan</code>.</td>
+</tr>
+<tr>
+<td><code>SparkPlanner</code> to <code>QueryExecution.sparkPlan</code></td>
+<td>Ordered strategies receive logical nodes and return zero or more physical candidates. <code>QueryPlanner.plan</code> recursively fills <code>PlanLater</code> children; <code>SparkStrategies.plan</code> links the physical node to its logical origin. <code>createSparkPlan</code> takes the <strong>first</strong> result of <code>planner.plan(ReturnAnswer(plan))</code>, not the cheapest of every possible tree.</td>
+</tr>
+<tr>
+<td><code>sparkPlan</code> to <code>executedPlan</code></td>
+<td><code>prepareForExecution</code> applies rules to a clone of the selected plan. <code>EnsureRequirements</code> compares child partitioning and ordering against parent requirements, inserting exchanges or local sorts where needed. If AQE wraps the tree, it runs its own stage preparation. <code>executedPlan</code> means <em>prepared for execution</em>, not <em>already run</em>.</td>
+</tr>
+<tr>
+<td>Physical operators to the core scheduler</td>
+<td>For the row path, <code>SparkPlan.execute()</code> supplies an <code>RDD[InternalRow]</code>. A distributed action submits work over RDD dependencies. The <a href="dag-scheduler.html">DAGScheduler</a> forms scheduler stages at shuffle dependencies and submits <code>TaskSet</code>s to the task scheduler. Several SQL operators can run in one task; a SQL operator is not a scheduler stage.</td>
+</tr>
+</tbody></table>
+<p>The <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/QueryExecution.scala#L219-L239">analysis</a>, <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/QueryExecution.scala#L343-L405">query-local plan state</a>, <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/SparkPlanner.scala#L33-L79">strategy list</a>,
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/planning/QueryPlanner.scala#L56-L95">placeholder expansion</a>, <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/SparkStrategies.scala#L77-L89">logical links</a>, and
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/QueryExecution.scala#L898-L930">first-candidate selection</a> are separate pieces of this handoff.</p>
+<h2 id="trace-why-the-regions-table-is-built-on-the-right">Trace: why the regions table is built on the right</h2>
+<ol>
+<li>Suppose <code>orders o LEFT JOIN regions r ON o.region_id = r.id AND o.amount &gt;= r.minimum</code>
+has integral equality keys, no hints, a large <code>orders</code>, and a <strong>6 MiB estimated</strong>
+right side after filtering. <code>ExtractEquiJoinKeys</code> extracts <code>region_id</code> and <code>id</code>;
+the amount comparison remains a condition on matching pairs.</li>
+<li><code>JoinSelection</code> tests whether the keys support binary-stable hashing and whether
+the join type permits that build side. A left outer hash join can build the
+<strong>right</strong>, not the preserved left. The automatic size test is
+<code>0 &lt;= sizeInBytes &lt;= autoBroadcastJoinThreshold</code>; at a 10 MiB threshold, 6 MiB
+qualifies. A broadcast hint can bypass the estimate test, not the join-type or
+key restrictions. If broadcast is ineligible, the strategy tries alternatives;
+for example, a sort-merge join needs orderable keys.</li>
+<li>The selected <code>BroadcastHashJoinExec(BuildRight)</code> asks for a hashed broadcast on
+<code>regions</code> and no particular distribution on <code>orders</code>. During preparation an
+unsatisfied build-side requirement becomes a <a href="broadcast-exchange.html">broadcast exchange</a>.
+At this point the planner has <strong>not</strong> collected <code>regions</code> or probed an order.</li>
+<li>At execution the <a href="broadcast-hash-join.html">join</a> consumes the relation. If AQE is
+active, distinguish this initial choice from the final SQL plan: runtime
+statistics may justify a different choice before the remaining work runs.</li>
+</ol>
+<h2 id="when-the-plan-surprises-you">When the plan surprises you</h2>
+<p>Use <code>df.explain(&quot;extended&quot;)</code> to see where a logical operation became a physical one,
+<code>df.explain(&quot;cost&quot;)</code> to inspect the <strong>estimates</strong>, and <code>df.explain(&quot;formatted&quot;)</code>
+to find the join, build side, and exchanges. An unresolved column is an analysis
+failure; increasing executor retries will not fix it. A stale size estimate can
+produce a perfectly valid plan that later times out or exhausts driver memory
+building the broadcast. For that case, compare the estimate with the exchange&#39;s
+runtime <code>data size</code> in the SQL UI for the actual action.</p>
+<p><strong>Implementation:</strong> <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/SparkStrategies.scala#L244-L359">join strategies and fallback order</a> ·
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/optimizer/joins.scala#L292-L315">build-side eligibility</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/optimizer/joins.scala#L436-L465">size and join-type checks</a> ·
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/exchange/EnsureRequirements.scala#L179-L195">distribution enforcement</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/SparkPlan.scala#L186-L202">RDD execution</a> ·
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/DAGScheduler.scala#L59-L82">scheduler handoff</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/QueryExecution.scala#L553-L571">EXPLAIN modes</a>.</p>
+</main></html>

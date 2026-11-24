@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="360" height="419" viewBox="0 0 360 419" role="img" aria-labelledby="flow-title" aria-describedby="flow-desc">
+<title id="flow-title">Spark event log: the records a later reader can replay: Flow at a glance</title>
+<desc id="flow-desc">1. Log startup: With event logging enabled, the driver opens the attempt&apos;s log and writes the Spark version. 2. Event listener: Encodes each selected event from its queue as one JSON line. 3. Log writer: The writer flushes at stage completion and finalizes the log on orderly shutdown.</desc>
+<style>
+@keyframes handoff {
+  0%, 18% { transform: translateY(0); }
+  40%, 58% { transform: translateY(144px); }
+  82%, 100% { transform: translateY(265px); }
+}
+@media (prefers-reduced-motion: no-preference) {
+  #focus { display: inline; animation: handoff 4.6s ease-in-out 1 both; }
+}
+@media (prefers-reduced-motion: reduce) { #focus { display: none; animation: none; } }
+</style>
+<rect x="1" y="1" width="358" height="417" rx="13" fill="#f2f7f6" stroke="#b8cbc8"/>
+<path d="M24 30 V295" fill="none" stroke="#577d7b" stroke-width="2"/>
+<g font-family="Arial, Helvetica, sans-serif">
+  <rect x="48" y="10" width="302" height="134" rx="9" fill="#fff" stroke="#a8bdbb"/>
+  <circle cx="24" cy="30" r="12" fill="#184d50"/>
+  <text x="24" y="36" text-anchor="middle" font-size="17" font-weight="700" fill="#fff">1</text>
+  <text font-size="19" font-weight="700" fill="#12383d"><tspan x="62" y="36">Log startup</tspan></text>
+  <text font-size="18" fill="#223a40"><tspan x="62" y="61">With event logging</tspan><tspan x="62" y="84">enabled, the driver opens</tspan><tspan x="62" y="107">the attempt&apos;s log and</tspan><tspan x="62" y="130">writes the Spark version.</tspan></text>
+  <rect x="48" y="154" width="302" height="111" rx="9" fill="#fff" stroke="#a8bdbb"/>
+  <circle cx="24" cy="174" r="12" fill="#184d50"/>
+  <text x="24" y="180" text-anchor="middle" font-size="17" font-weight="700" fill="#fff">2</text>
+  <text font-size="19" font-weight="700" fill="#12383d"><tspan x="62" y="180">Event listener</tspan></text>
+  <text font-size="18" fill="#223a40"><tspan x="62" y="205">Encodes each selected</tspan><tspan x="62" y="228">event from its queue as</tspan><tspan x="62" y="251">one JSON line.</tspan></text>
+  <rect x="48" y="275" width="302" height="134" rx="9" fill="#fff" stroke="#a8bdbb"/>
+  <circle cx="24" cy="295" r="12" fill="#184d50"/>
+  <text x="24" y="301" text-anchor="middle" font-size="17" font-weight="700" fill="#fff">3</text>
+  <text font-size="19" font-weight="700" fill="#12383d"><tspan x="62" y="301">Log writer</tspan></text>
+  <text font-size="18" fill="#223a40"><tspan x="62" y="326">The writer flushes at</tspan><tspan x="62" y="349">stage completion and</tspan><tspan x="62" y="372">finalizes the log on</tspan><tspan x="62" y="395">orderly shutdown.</tspan></text>
+</g>
+<g id="focus" display="none" aria-hidden="true">
+  <circle cx="24" cy="30" r="16" fill="none" stroke="#17484d" stroke-width="2"/>
+  <path d="M40 25 l6 5 -6 5 z" fill="#17484d"/>
+</g>
+</svg>

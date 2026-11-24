@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="360" height="396" viewBox="0 0 360 396" role="img" aria-labelledby="flow-title" aria-describedby="flow-desc">
+<title id="flow-title">Python worker: executing one partition&apos;s Python code: Flow at a glance</title>
+<desc id="flow-desc">1. Python worker: The worker sets up this task&apos;s context and loads the partition function. 2. Partition function: The function adds one to each input, turning 4 and 9 into 5 and 10. 3. Result stream: The worker streams those values to the executor JVM, then confirms a clean finish.</desc>
+<style>
+@keyframes handoff {
+  0%, 18% { transform: translateY(0); }
+  40%, 58% { transform: translateY(121px); }
+  82%, 100% { transform: translateY(242px); }
+}
+@media (prefers-reduced-motion: no-preference) {
+  #focus { display: inline; animation: handoff 4.6s ease-in-out 1 both; }
+}
+@media (prefers-reduced-motion: reduce) { #focus { display: none; animation: none; } }
+</style>
+<rect x="1" y="1" width="358" height="394" rx="13" fill="#f2f7f6" stroke="#b8cbc8"/>
+<path d="M24 30 V272" fill="none" stroke="#577d7b" stroke-width="2"/>
+<g font-family="Arial, Helvetica, sans-serif">
+  <rect x="48" y="10" width="302" height="111" rx="9" fill="#fff" stroke="#a8bdbb"/>
+  <circle cx="24" cy="30" r="12" fill="#184d50"/>
+  <text x="24" y="36" text-anchor="middle" font-size="17" font-weight="700" fill="#fff">1</text>
+  <text font-size="19" font-weight="700" fill="#12383d"><tspan x="62" y="36">Python worker</tspan></text>
+  <text font-size="18" fill="#223a40"><tspan x="62" y="61">The worker sets up this</tspan><tspan x="62" y="84">task&apos;s context and loads</tspan><tspan x="62" y="107">the partition function.</tspan></text>
+  <rect x="48" y="131" width="302" height="111" rx="9" fill="#fff" stroke="#a8bdbb"/>
+  <circle cx="24" cy="151" r="12" fill="#184d50"/>
+  <text x="24" y="157" text-anchor="middle" font-size="17" font-weight="700" fill="#fff">2</text>
+  <text font-size="19" font-weight="700" fill="#12383d"><tspan x="62" y="157">Partition function</tspan></text>
+  <text font-size="18" fill="#223a40"><tspan x="62" y="182">The function adds one to</tspan><tspan x="62" y="205">each input, turning 4 and</tspan><tspan x="62" y="228">9 into 5 and 10.</tspan></text>
+  <rect x="48" y="252" width="302" height="134" rx="9" fill="#fff" stroke="#a8bdbb"/>
+  <circle cx="24" cy="272" r="12" fill="#184d50"/>
+  <text x="24" y="278" text-anchor="middle" font-size="17" font-weight="700" fill="#fff">3</text>
+  <text font-size="19" font-weight="700" fill="#12383d"><tspan x="62" y="278">Result stream</tspan></text>
+  <text font-size="18" fill="#223a40"><tspan x="62" y="303">The worker streams those</tspan><tspan x="62" y="326">values to the executor</tspan><tspan x="62" y="349">JVM, then confirms a</tspan><tspan x="62" y="372">clean finish.</tspan></text>
+</g>
+<g id="focus" display="none" aria-hidden="true">
+  <circle cx="24" cy="30" r="16" fill="none" stroke="#17484d" stroke-width="2"/>
+  <path d="M40 25 l6 5 -6 5 z" fill="#17484d"/>
+</g>
+</svg>

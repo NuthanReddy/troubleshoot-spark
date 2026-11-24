@@ -1,0 +1,127 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000.925 775" width="1000.925" height="775" style="--bg:#101d2e;--fg:#ecf3f8;--line:#839ab5;--accent:#93e3d1;background:var(--bg)">
+<style>
+  text { font-family: 'system-ui', system-ui, sans-serif; }
+  svg {
+    /* Derived from --bg and --fg (overridable via --line, --accent, etc.) */
+    --_text:          var(--fg);
+    --_text-sec:      var(--muted, color-mix(in srgb, var(--fg) 60%, var(--bg)));
+    --_text-muted:    var(--muted, color-mix(in srgb, var(--fg) 40%, var(--bg)));
+    --_text-faint:    color-mix(in srgb, var(--fg) 25%, var(--bg));
+    --_line:          var(--line, color-mix(in srgb, var(--fg) 50%, var(--bg)));
+    --_arrow:         var(--accent, color-mix(in srgb, var(--fg) 85%, var(--bg)));
+    --_node-fill:     var(--surface, color-mix(in srgb, var(--fg) 3%, var(--bg)));
+    --_node-stroke:   var(--border, color-mix(in srgb, var(--fg) 20%, var(--bg)));
+    --_group-fill:    var(--bg);
+    --_group-hdr:     color-mix(in srgb, var(--fg) 5%, var(--bg));
+    --_inner-stroke:  color-mix(in srgb, var(--fg) 12%, var(--bg));
+    --_key-badge:     color-mix(in srgb, var(--fg) 10%, var(--bg));
+  }
+</style>
+<defs>
+  <marker id="seq-arrow" markerWidth="8" markerHeight="5" refX="8" refY="2.5" orient="auto-start-reverse">
+    <polygon points="0 0, 8 2.5, 0 5" fill="var(--_arrow)" />
+  </marker>
+  <marker id="seq-arrow-open" markerWidth="8" markerHeight="5" refX="8" refY="2.5" orient="auto-start-reverse">
+    <polyline points="0 0, 8 2.5, 0 5" fill="none" stroke="var(--_arrow)" stroke-width="1" />
+  </marker>
+</defs>
+<line class="lifeline" data-actor="P" x1="87.3595" y1="70" x2="87.3595" y2="745" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" />
+<line class="lifeline" data-actor="D" x1="236.521" y1="70" x2="236.521" y2="745" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" />
+<line class="lifeline" data-actor="Y" x1="414.211" y1="70" x2="414.211" y2="745" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" />
+<line class="lifeline" data-actor="M" x1="597.829" y1="70" x2="597.829" y2="745" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" />
+<line class="lifeline" data-actor="R" x1="763.2925" y1="70" x2="763.2925" y2="745" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" />
+<line class="lifeline" data-actor="F" x1="920.9755" y1="70" x2="920.9755" y2="745" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" />
+<g class="message" data-from="P" data-to="D" data-label="Request a DataFrame write through the local gateway" data-line-style="solid" data-arrow-head="filled" data-self="false">
+  <line x1="87.3595" y1="90" x2="236.521" y2="90" stroke="var(--_line)" stroke-width="1" marker-end="url(#seq-arrow)" />
+  <text x="161.94025" y="80" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">Request a DataFrame write through the local gateway</text>
+</g>
+<g class="message" data-from="Y" data-to="M" data-label="NM launches executor with driver URL" data-line-style="solid" data-arrow-head="filled" data-self="false">
+  <line x1="414.211" y1="145" x2="597.829" y2="145" stroke="var(--_line)" stroke-width="1" marker-end="url(#seq-arrow)" />
+  <text x="506.02" y="135" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">NM launches executor with driver URL</text>
+</g>
+<g class="message" data-from="M" data-to="D" data-label="Register executor and advertise block manager" data-line-style="solid" data-arrow-head="filled" data-self="false">
+  <line x1="597.829" y1="185" x2="236.521" y2="185" stroke="var(--_line)" stroke-width="1" marker-end="url(#seq-arrow)" />
+  <text x="417.17499999999995" y="175" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">Register executor and advertise block manager</text>
+</g>
+<g class="message" data-from="Y" data-to="R" data-label="NM launches executor with driver URL" data-line-style="solid" data-arrow-head="filled" data-self="false">
+  <line x1="414.211" y1="225" x2="763.2925" y2="225" stroke="var(--_line)" stroke-width="1" marker-end="url(#seq-arrow)" />
+  <text x="588.75175" y="215" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">NM launches executor with driver URL</text>
+</g>
+<g class="message" data-from="R" data-to="D" data-label="Register executor and advertise block manager" data-line-style="solid" data-arrow-head="filled" data-self="false">
+  <line x1="763.2925" y1="265" x2="236.521" y2="265" stroke="var(--_line)" stroke-width="1" marker-end="url(#seq-arrow)" />
+  <text x="499.90675" y="255" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">Register executor and advertise block manager</text>
+</g>
+<g class="message" data-from="D" data-to="M" data-label="Launch tasks for input partitions" data-line-style="solid" data-arrow-head="filled" data-self="false">
+  <line x1="236.521" y1="305" x2="597.829" y2="305" stroke="var(--_line)" stroke-width="1" marker-end="url(#seq-arrow)" />
+  <text x="417.17499999999995" y="295" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">Launch tasks for input partitions</text>
+</g>
+<g class="message" data-from="M" data-to="F" data-label="Read assigned input" data-line-style="solid" data-arrow-head="filled" data-self="false">
+  <line x1="597.829" y1="345" x2="920.9755" y2="345" stroke="var(--_line)" stroke-width="1" marker-end="url(#seq-arrow)" />
+  <text x="759.40225" y="335" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">Read assigned input</text>
+</g>
+<g class="message" data-from="M" data-to="D" data-label="MapStatus with shuffle location and sizes" data-line-style="dashed" data-arrow-head="filled" data-self="false">
+  <line x1="597.829" y1="385" x2="236.521" y2="385" stroke="var(--_line)" stroke-width="1" stroke-dasharray="6 4" marker-end="url(#seq-arrow)" />
+  <text x="417.17499999999995" y="375" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">MapStatus with shuffle location and sizes</text>
+</g>
+<g class="message" data-from="D" data-to="R" data-label="Launch tasks for reduce partitions" data-line-style="solid" data-arrow-head="filled" data-self="false">
+  <line x1="236.521" y1="425" x2="763.2925" y2="425" stroke="var(--_line)" stroke-width="1" marker-end="url(#seq-arrow)" />
+  <text x="499.90675" y="415" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">Launch tasks for reduce partitions</text>
+</g>
+<g class="message" data-from="R" data-to="D" data-label="Get shuffle locations if not cached" data-line-style="solid" data-arrow-head="filled" data-self="false">
+  <line x1="763.2925" y1="465" x2="236.521" y2="465" stroke="var(--_line)" stroke-width="1" marker-end="url(#seq-arrow)" />
+  <text x="499.90675" y="455" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">Get shuffle locations if not cached</text>
+</g>
+<g class="message" data-from="R" data-to="M" data-label="Fetch remote shuffle blocks from serving address" data-line-style="solid" data-arrow-head="filled" data-self="false">
+  <line x1="763.2925" y1="505" x2="597.829" y2="505" stroke="var(--_line)" stroke-width="1" marker-end="url(#seq-arrow)" />
+  <text x="680.56075" y="495" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">Fetch remote shuffle blocks from serving address</text>
+</g>
+<g class="message" data-from="M" data-to="R" data-label="Partition bytes, without going through driver" data-line-style="dashed" data-arrow-head="filled" data-self="false">
+  <line x1="597.829" y1="545" x2="763.2925" y2="545" stroke="var(--_line)" stroke-width="1" stroke-dasharray="6 4" marker-end="url(#seq-arrow)" />
+  <text x="680.56075" y="535" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">Partition bytes, without going through driver</text>
+</g>
+<g class="message" data-from="R" data-to="F" data-label="Write task output and perform task commit" data-line-style="solid" data-arrow-head="filled" data-self="false">
+  <line x1="763.2925" y1="585" x2="920.9755" y2="585" stroke="var(--_line)" stroke-width="1" marker-end="url(#seq-arrow)" />
+  <text x="842.134" y="575" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">Write task output and perform task commit</text>
+</g>
+<g class="message" data-from="R" data-to="D" data-label="Task commit messages" data-line-style="dashed" data-arrow-head="filled" data-self="false">
+  <line x1="763.2925" y1="625" x2="236.521" y2="625" stroke="var(--_line)" stroke-width="1" stroke-dasharray="6 4" marker-end="url(#seq-arrow)" />
+  <text x="499.90675" y="615" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">Task commit messages</text>
+</g>
+<g class="message" data-from="D" data-to="F" data-label="Request job commit through commit protocol" data-line-style="solid" data-arrow-head="filled" data-self="false">
+  <line x1="236.521" y1="665" x2="920.9755" y2="665" stroke="var(--_line)" stroke-width="1" marker-end="url(#seq-arrow)" />
+  <text x="578.74825" y="655" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">Request job commit through commit protocol</text>
+</g>
+<g class="message" data-from="D" data-to="P" data-label="Return success only if the write succeeded" data-line-style="dashed" data-arrow-head="filled" data-self="false">
+  <line x1="236.521" y1="705" x2="87.3595" y2="705" stroke="var(--_line)" stroke-width="1" stroke-dasharray="6 4" marker-end="url(#seq-arrow)" />
+  <text x="161.94025" y="695" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">Return success only if the write succeeded</text>
+</g>
+<g class="note" data-position="over" data-actors="D,Y">
+  <polygon points="149.48800000000006,98 495.2439999999999,98 501.2439999999999,104 501.2439999999999,121 149.48800000000006,121" fill="var(--bg)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <polygon points="495.2439999999999,98 501.2439999999999,104 495.2439999999999,104" fill="var(--_inner-stroke)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="325.366" y="109.5" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">Executor capacity may already have been requested before the action</text>
+</g>
+<g class="actor" data-id="P" data-label="Python driver" data-type="participant">
+  <rect x="29.999999999999993" y="30" width="114.71900000000001" height="40" rx="4" ry="4" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <text x="87.3595" y="50" font-size="13" text-anchor="middle" font-weight="500" fill="var(--_text)" dy="4.55">Python driver</text>
+</g>
+<g class="actor" data-id="D" data-label="Driver JVM" data-type="participant">
+  <rect x="184.719" y="30" width="103.604" height="40" rx="4" ry="4" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <text x="236.521" y="50" font-size="13" text-anchor="middle" font-weight="500" fill="var(--_text)" dy="4.55">Driver JVM</text>
+</g>
+<g class="actor" data-id="Y" data-label="AM and YARN services" data-type="participant">
+  <rect x="328.32300000000004" y="30" width="171.77599999999998" height="40" rx="4" ry="4" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <text x="414.211" y="50" font-size="13" text-anchor="middle" font-weight="500" fill="var(--_text)" dy="4.55">AM and YARN services</text>
+</g>
+<g class="actor" data-id="M" data-label="Map executor" data-type="participant">
+  <rect x="540.0989999999999" y="30" width="115.46000000000001" height="40" rx="4" ry="4" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <text x="597.829" y="50" font-size="13" text-anchor="middle" font-weight="500" fill="var(--_text)" dy="4.55">Map executor</text>
+</g>
+<g class="actor" data-id="R" data-label="Reduce executor" data-type="participant">
+  <rect x="695.559" y="30" width="135.467" height="40" rx="4" ry="4" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <text x="763.2925" y="50" font-size="13" text-anchor="middle" font-weight="500" fill="var(--_text)" dy="4.55">Reduce executor</text>
+</g>
+<g class="actor" data-id="F" data-label="File system" data-type="participant">
+  <rect x="871.0260000000001" y="30" width="99.899" height="40" rx="4" ry="4" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <text x="920.9755" y="50" font-size="13" text-anchor="middle" font-weight="500" fill="var(--_text)" dy="4.55">File system</text>
+</g>
+</svg>

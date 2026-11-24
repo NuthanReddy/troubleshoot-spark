@@ -1,0 +1,62 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Shuffle block resolver: from a block ID to a byte range · Troubleshoot Spark</title><link rel="stylesheet" href="../style.css"><main class="reader"><nav><a href=".././#map">Diagnostic map</a> · <a href="../guide.html">Lifecycle</a> · <a href="../scenarios.html">Cases</a> · <a href="../components/index.html">Components</a></nav><h1 id="shuffle-block-resolver-from-a-block-id-to-a-byte-range">Shuffle block resolver: from a block ID to a byte range</h1>
+<p><a href="index.html">component index</a> | <a href="shuffle-writer.html">Shuffle writer</a> | <a href="shuffle-reader.html">Shuffle reader</a></p>
+<p><code>IndexShuffleBlockResolver</code> implements the default sort-shuffle file format on the executor. On write, it commits the index and data for <strong>one map output</strong>. On read, it answers “which bytes in this map&#39;s file belong to reducer <code>r</code>?” It does not decide which map attempt won, discover a remote host, deserialize rows, or open a listening port.</p>
+<h2 id="flow-at-a-glance">Flow at a glance</h2>
+<ol>
+<li><strong>Block manager</strong>: Requests reducer 2&#39;s block from shuffle 7, map attempt 41.</li>
+<li><strong>Block resolver</strong>: Reads offsets 40 and 65 from attempt 41&#39;s index.</li>
+<li><strong>File segment</strong>: Points the caller to 25 bytes starting at offset 40 in the data file.</li>
+</ol>
+<blockquote>
+<p><strong>Key distinction:</strong> The tracker reports an estimated size for this block. The on-disk index, not that estimate, supplies its exact start and end.</p>
+</blockquote>
+<details>
+<summary>Show the animated flow</summary>
+
+<p><img src="visuals/shuffle-block-resolver.svg" alt="Block resolver uses index offsets 40 and 65 to locate reducer 2's 25 bytes in attempt 41's data file"></p>
+</details>
+
+<h2 id="the-disk-layout-with-one-worked-lookup">The disk layout, with one worked lookup</h2>
+<p>Suppose input map partition <strong>3</strong> of shuffle <strong>7</strong> ran as task attempt <strong>41</strong>. Its exact stored lengths, in reduce ID order, are <code>[40, 0, 25]</code> bytes. The logical block <code>shuffle_7_41_2</code> is <strong>not</strong> a filename:</p>
+<table>
+<thead>
+<tr>
+<th>File</th>
+<th>Contents for this example</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>shuffle_7_41_0.data</code></td>
+<td>65 bytes. Reducer 0 occupies <code>[0, 40)</code>, reducer 1 is empty, and reducer 2 occupies <code>[40, 65)</code>.</td>
+</tr>
+<tr>
+<td><code>shuffle_7_41_0.index</code></td>
+<td>Four big-endian 64-bit offsets: <code>[0, 40, 40, 65]</code>. The final offset is the end of the data. For <code>R</code> reducers the index is <code>8 * (R + 1)</code> bytes.</td>
+</tr>
+<tr>
+<td>Optional checksum sidecar</td>
+<td>A checksum per reduce block when supplied, for corruption diagnosis; not needed to locate the bytes. Its <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/shuffle/IndexShuffleBlockResolver.scala#L602-L613">name includes the algorithm</a>.</td>
+</tr>
+</tbody></table>
+<p>The <code>_0</code> in both permanent filenames is a <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/shuffle/IndexShuffleBlockResolver.scala#L46-L57">placeholder reduce ID</a>, not an assertion that the file contains only reducer 0. The physical <code>mapId</code> is 41, not array slot 3 (these can coincide under the old fetch protocol). The resolver asks <code>DiskBlockManager</code> for each filename; the <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/storage/DiskBlockManager.scala#L92-L128">hash-based placement</a> means the index and data need not be in the same subdirectory. For host-local reads it can <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/shuffle/IndexShuffleBlockResolver.scala#L126-L155">resolve using explicit executor directories</a>.</p>
+<h2 id="commit-before-publish">Commit before publish</h2>
+<ol>
+<li><code>SortShuffleManager</code> <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/shuffle/sort/SortShuffleManager.scala#L73-L86">creates a resolver</a> for serving blocks and tracks map IDs it wrote per shuffle. The default <code>LocalDiskShuffleExecutorComponents</code> <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/java/org/apache/spark/shuffle/sort/io/LocalDiskShuffleExecutorComponents.java#L55-L88">creates its own resolver for the disk writers</a>. These are separate objects in this revision; they agree on a <strong>file format and directory mapping</strong>, not an in-memory map of every block&#39;s offsets.</li>
+<li>A <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/java/org/apache/spark/shuffle/sort/io/LocalDiskShuffleMapOutputWriter.java#L101-L129">local disk output writer</a> supplies <code>(shuffleId, mapId, exact partition lengths, optional checksums, temporary data file)</code> to <code>writeMetadataFileAndCommit</code>. Inside a synchronized section, the resolver <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/shuffle/IndexShuffleBlockResolver.scala#L213-L251">checks an existing index/data pair</a>. If usable for that same file identity, it copies the existing lengths back to the caller and discards the duplicate temporary output. This is not the driver&#39;s selection between different attempt IDs.</li>
+<li>Otherwise it prefix-sums lengths starting at zero, writes the index through a temporary file, and renames staged data into place if present. Index/data commit errors propagate; writing the optional checksum after a successful data/index commit is best effort. The <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/shuffle/IndexShuffleBlockResolver.scala#L391-L461">commit code</a> serializes competing writers on the resolver; it is <strong>not</strong> one filesystem transaction across files. A completely empty map can commit a zero-offset index without a data file. Only after commit does the writer return a status to advertise.</li>
+</ol>
+<figure class="source-figure"><a href="../diagrams/components-shuffle-block-resolver-1.svg" title="Open diagram at full size"><img loading="lazy" src="../diagrams/components-shuffle-block-resolver-1.svg" alt="Sequence diagram for components shuffle block resolver; open to enlarge"></a><figcaption>Sequence diagram · <a href="../diagrams/components-shuffle-block-resolver-1.svg">Open full size</a></figcaption><details><summary>Text equivalent</summary><pre>sequenceDiagram
+    participant B as BlockManager
+    participant R as IndexShuffleBlockResolver
+    participant I as Map 41 index
+    participant D as Map 41 data
+    B-&gt;&gt;R: getBlockData for shuffle 7, map 41, reduce 2
+    R-&gt;&gt;I: Read longs at positions 16 and 24
+    I--&gt;&gt;R: Start 40, end 65
+    R--&gt;&gt;B: FileSegmentManagedBuffer for offset 40, length 25
+    B-&gt;&gt;D: Consumer or transport reads that segment</pre></details></figure>
+<p>On a <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/storage/BlockManager.scala#L883-L905">local or executor-served fetch</a>, <code>getBlockData</code> uses the requested reduce ID and its successor (or the two endpoints of a <code>ShuffleBlockBatchId</code>). It <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/shuffle/IndexShuffleBlockResolver.scala#L615-L658">seeks to <code>8 * start</code> and <code>8 * end</code></a>, closes the index channel, and returns a file-segment descriptor. Length is <code>endOffset - startOffset</code>; the compressed estimate from <code>MapStatus</code> is <strong>not</strong> an input. When the optional <a href="external-shuffle-service.html">external shuffle service</a> serves a remote request, <strong>its Java resolver</strong> reads the same format; it need not call the executor or keep that JVM alive.</p>
+<h2 id="removal-failures-and-diagnosis">Removal, failures, and diagnosis</h2>
+<p><code>SortShuffleManager.unregisterShuffle</code> <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/shuffle/sort/SortShuffleManager.scala#L179-L194">iterates its recorded map IDs</a> and asks <code>removeDataByMap</code> to <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/shuffle/IndexShuffleBlockResolver.scala#L187-L207">delete data, index, and configured checksum files</a>. Manager shutdown also calls <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/shuffle/IndexShuffleBlockResolver.scala#L668-L675"><code>resolver.stop()</code></a>, which is a no-op here; do not equate it with removing each shuffle. The resolver neither retries a lost file on another node nor recomputes a partition. Read or transfer failure is reported by the <a href="shuffle-reader.html">reader</a>; the driver decides what to rerun.</p>
+<p><strong>Diagnostic:</strong> Given an error for <code>shuffle_7_41_2</code>, use the producing executor&#39;s local directories and search for the two <code>_0</code> filenames, not <code>_2.data</code> or a file named after map index 3. For this example the index should be <strong>32 bytes</strong>, its last offset <strong>65</strong>, and its two entries for reducer 2 <strong>40 and 65</strong>. A missing index prevents lookup even if data still exists. Equal offsets denote an empty partition, not a missing file. Preserve live files when inspecting them.</p>
+</main></html>

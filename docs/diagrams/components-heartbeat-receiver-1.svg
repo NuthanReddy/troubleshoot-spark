@@ -1,0 +1,81 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1068.656 445" width="1068.656" height="445" style="--bg:#101d2e;--fg:#ecf3f8;--line:#839ab5;--accent:#93e3d1;background:var(--bg)">
+<style>
+  text { font-family: 'system-ui', system-ui, sans-serif; }
+  svg {
+    /* Derived from --bg and --fg (overridable via --line, --accent, etc.) */
+    --_text:          var(--fg);
+    --_text-sec:      var(--muted, color-mix(in srgb, var(--fg) 60%, var(--bg)));
+    --_text-muted:    var(--muted, color-mix(in srgb, var(--fg) 40%, var(--bg)));
+    --_text-faint:    color-mix(in srgb, var(--fg) 25%, var(--bg));
+    --_line:          var(--line, color-mix(in srgb, var(--fg) 50%, var(--bg)));
+    --_arrow:         var(--accent, color-mix(in srgb, var(--fg) 85%, var(--bg)));
+    --_node-fill:     var(--surface, color-mix(in srgb, var(--fg) 3%, var(--bg)));
+    --_node-stroke:   var(--border, color-mix(in srgb, var(--fg) 20%, var(--bg)));
+    --_group-fill:    var(--bg);
+    --_group-hdr:     color-mix(in srgb, var(--fg) 5%, var(--bg));
+    --_inner-stroke:  color-mix(in srgb, var(--fg) 12%, var(--bg));
+    --_key-badge:     color-mix(in srgb, var(--fg) 10%, var(--bg));
+  }
+</style>
+<defs>
+  <marker id="seq-arrow" markerWidth="8" markerHeight="5" refX="8" refY="2.5" orient="auto-start-reverse">
+    <polygon points="0 0, 8 2.5, 0 5" fill="var(--_arrow)" />
+  </marker>
+  <marker id="seq-arrow-open" markerWidth="8" markerHeight="5" refX="8" refY="2.5" orient="auto-start-reverse">
+    <polyline points="0 0, 8 2.5, 0 5" fill="none" stroke="var(--_arrow)" stroke-width="1" />
+  </marker>
+</defs>
+<line class="lifeline" data-actor="E" x1="110.3305" y1="70" x2="110.3305" y2="415" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" />
+<line class="lifeline" data-actor="H" x1="324.32949999999994" y1="70" x2="324.32949999999994" y2="415" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" />
+<line class="lifeline" data-actor="S" x1="590.569" y1="70" x2="590.569" y2="415" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" />
+<line class="lifeline" data-actor="B" x1="900.8979999999999" y1="70" x2="900.8979999999999" y2="415" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" />
+<g class="message" data-from="E" data-to="H" data-label="Heartbeat with executor ID and metrics" data-line-style="solid" data-arrow-head="filled" data-self="false">
+  <line x1="110.3305" y1="90" x2="324.32949999999994" y2="90" stroke="var(--_line)" stroke-width="1" marker-end="url(#seq-arrow)" />
+  <text x="217.32999999999998" y="80" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">Heartbeat with executor ID and metrics</text>
+</g>
+<g class="message" data-from="H" data-to="S" data-label="Dispatch executorHeartbeatReceived on the event-loop thread" data-line-style="solid" data-arrow-head="filled" data-self="false">
+  <line x1="324.32949999999994" y1="145" x2="590.569" y2="145" stroke="var(--_line)" stroke-width="1" marker-end="url(#seq-arrow)" />
+  <text x="457.44924999999995" y="135" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">Dispatch executorHeartbeatReceived on the event-loop thread</text>
+</g>
+<g class="message" data-from="S" data-to="S" data-label="Attach known task stage IDs and post a metrics event" data-line-style="solid" data-arrow-head="filled" data-self="true">
+  <polyline points="590.569,185 620.569,185 620.569,205 590.569,205" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#seq-arrow)" />
+  <text x="628.569" y="195" font-size="11" text-anchor="start" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">Attach known task stage IDs and post a metrics event</text>
+</g>
+<g class="message" data-from="S" data-to="B" data-label="BlockManagerHeartbeat with BlockManagerId" data-line-style="solid" data-arrow-head="filled" data-self="false">
+  <line x1="590.569" y1="255" x2="900.8979999999999" y2="255" stroke="var(--_line)" stroke-width="1" marker-end="url(#seq-arrow)" />
+  <text x="745.7334999999999" y="245" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">BlockManagerHeartbeat with BlockManagerId</text>
+</g>
+<g class="message" data-from="B" data-to="S" data-label="Is this block manager known?" data-line-style="dashed" data-arrow-head="filled" data-self="false">
+  <line x1="900.8979999999999" y1="295" x2="590.569" y2="295" stroke="var(--_line)" stroke-width="1" stroke-dasharray="6 4" marker-end="url(#seq-arrow)" />
+  <text x="745.7334999999999" y="285" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">Is this block manager known?</text>
+</g>
+<g class="message" data-from="S" data-to="H" data-label="Boolean" data-line-style="dashed" data-arrow-head="filled" data-self="false">
+  <line x1="590.569" y1="335" x2="324.32949999999994" y2="335" stroke="var(--_line)" stroke-width="1" stroke-dasharray="6 4" marker-end="url(#seq-arrow)" />
+  <text x="457.44924999999995" y="325" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">Boolean</text>
+</g>
+<g class="message" data-from="H" data-to="E" data-label="HeartbeatResponse with re-registration flag" data-line-style="dashed" data-arrow-head="filled" data-self="false">
+  <line x1="324.32949999999994" y1="375" x2="110.3305" y2="375" stroke="var(--_line)" stroke-width="1" stroke-dasharray="6 4" marker-end="url(#seq-arrow)" />
+  <text x="217.32999999999998" y="365" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">HeartbeatResponse with re-registration flag</text>
+</g>
+<g class="note" data-position="over" data-actors="H">
+  <polygon points="220.9194999999999,98 421.73949999999996,98 427.73949999999996,104 427.73949999999996,121 220.9194999999999,121" fill="var(--bg)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <polygon points="421.73949999999996,98 427.73949999999996,104 421.73949999999996,104" fill="var(--_inner-stroke)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="324.32949999999994" y="109.5" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">Refresh lastSeen for a known executor</text>
+</g>
+<g class="actor" data-id="E" data-label="Executor heartbeater" data-type="participant">
+  <rect x="30" y="30" width="160.661" height="40" rx="4" ry="4" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <text x="110.3305" y="50" font-size="13" text-anchor="middle" font-weight="500" fill="var(--_text)" dy="4.55">Executor heartbeater</text>
+</g>
+<g class="actor" data-id="H" data-label="Driver HeartbeatReceiver" data-type="participant">
+  <rect x="230.66099999999994" y="30" width="187.33699999999996" height="40" rx="4" ry="4" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <text x="324.32949999999994" y="50" font-size="13" text-anchor="middle" font-weight="500" fill="var(--_text)" dy="4.55">Driver HeartbeatReceiver</text>
+</g>
+<g class="actor" data-id="S" data-label="TaskSchedulerImpl and DAGScheduler" data-type="participant">
+  <rect x="457.998" y="30" width="265.14199999999994" height="40" rx="4" ry="4" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <text x="590.569" y="50" font-size="13" text-anchor="middle" font-weight="500" fill="var(--_text)" dy="4.55">TaskSchedulerImpl and DAGScheduler</text>
+</g>
+<g class="actor" data-id="B" data-label="BlockManagerMaster heartbeat endpoint" data-type="participant">
+  <rect x="763.1399999999999" y="30" width="275.51599999999996" height="40" rx="4" ry="4" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <text x="900.8979999999999" y="50" font-size="13" text-anchor="middle" font-weight="500" fill="var(--_text)" dy="4.55">BlockManagerMaster heartbeat endpoint</text>
+</g>
+</svg>

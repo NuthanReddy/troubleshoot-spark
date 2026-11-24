@@ -1,0 +1,54 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Executor: the runtime shared by task attempts · Troubleshoot Spark</title><link rel="stylesheet" href="../style.css"><main class="reader"><nav><a href=".././#map">Diagnostic map</a> · <a href="../guide.html">Lifecycle</a> · <a href="../scenarios.html">Cases</a> · <a href="../components/index.html">Components</a></nav><h1 id="executor-the-runtime-shared-by-task-attempts">Executor: the runtime shared by task attempts</h1>
+<p><a href="index.html">component index</a> | <a href="../guide.html">Lifecycle guide</a></p>
+<p>On classic YARN, <code>Executor</code> is a long-lived <strong>object inside the executor JVM</strong>, not the NodeManager, the <a href="executor-backend.html">backend RPC endpoint</a>, or a Python worker. One instance serves many attempts using the same <code>SparkEnv</code>, block manager and JVM. The driver chooses what fits on the executor; the executor runs what it is assigned.</p>
+<h2 id="flow-at-a-glance">Flow at a glance</h2>
+<ol>
+<li><strong>Early cancellation</strong>: The executor saves a kill mark for the attempt ID.</li>
+<li><strong>Late launch</strong>: The executor applies the mark before submitting the runner.</li>
+<li><strong>Task runner</strong>: Report the attempt killed without running the partition.</li>
+</ol>
+<blockquote>
+<p><strong>Key distinction:</strong> The kill mark belongs to one attempt ID, not to every attempt for that partition.</p>
+</blockquote>
+<details>
+<summary>Show the animated flow</summary>
+
+<p><img src="visuals/executor.svg" alt="A kill request arrives before launch and the matching task runner stops before computing the partition."></p>
+</details>
+
+<h2 id="what-lives-for-the-executor39s-lifetime">What lives for the executor&#39;s lifetime?</h2>
+<table>
+<thead>
+<tr>
+<th>State or thread</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Task worker pool and <code>runningTasks</code></td>
+<td>A cached pool of daemon <code>UninterruptibleThread</code> workers runs <code>TaskRunner</code>s. The concurrent map is keyed by <strong>attempt ID</strong>, not partition. The pool size is not the advertised slot count: the driver <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/cluster/CoarseGrainedSchedulerBackend.scala#L457-L486">accounts for CPUs and other resources at launch</a>.</td>
+</tr>
+<tr>
+<td>Artifacts and class loaders</td>
+<td>Tracks files, jars and archives by version/timestamp. Updates use an interruptible lock rather than letting concurrent tasks race to install dependencies. A task sets its thread&#39;s loader before deserializing user classes.</td>
+</tr>
+<tr>
+<td>Kill marks and optional reapers</td>
+<td><code>killMarks</code> remembers <code>(interruptThread, reason, timestamp)</code> if cancellation wins the race with launch. A scheduled sweep expires stale marks. Reapers, when enabled, run in a separate pool so the backend need not wait for user code to stop.</td>
+</tr>
+<tr>
+<td>Heartbeater and metrics poller</td>
+<td>Periodically snapshot executor metrics and available accumulator updates from active tasks. They are separate from both the task workers and the RPC endpoint dispatcher.</td>
+</tr>
+</tbody></table>
+<p><a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/executor/Executor.scala#L249-L345">Pool and storage setup</a> | <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/executor/Executor.scala#L388-L450">Class loaders, maps and cleanup timer</a> | <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/executor/Executor.scala#L1450-L1483">Dependency lock</a></p>
+<h2 id="startup-work-and-retirement">Startup, work and retirement</h2>
+<ol>
+<li><strong>Initialize the runtime.</strong> After driver registration the backend constructs <code>Executor(id, host, env, userClassPath, isLocal = false, resources)</code>. It installs the process uncaught-exception handler, initializes the block manager with the application ID and registers metrics sources. Block manager initialization starts its transfer service and <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/storage/BlockManager.scala#L694-L742">registers its own storage identity</a>; this is distinct from scheduler registration. The heartbeater starts before plugin initialization; initial artifacts are loaded before plugins and the shuffle manager. Only after construction returns does the backend announce readiness. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/executor/Executor.scala#L478-L539">Initialization order</a> | <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/executor/CoarseGrainedExecutorBackend.scala#L167-L177">Readiness message</a></li>
+<li><strong>Accept a launch.</strong> <code>launchTask(backend, description)</code> constructs a <a href="task-attempt.html">TaskRunner for the attempt</a>, puts it in <code>runningTasks</code>, applies any pending kill mark, then submits it to the pool. The RPC dispatcher can return without waiting for the partition. The runner uses the backend to report <code>RUNNING</code> and a terminal state with a result or failure reason. On the usual exit path its <code>finally</code> removes the map entry; it does not destroy the executor. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/executor/Executor.scala#L541-L639">Submission and cancellation</a> | <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/executor/Executor.scala#L1134-L1161">Runner cleanup</a></li>
+<li><strong>Report liveness independently.</strong> <code>Heartbeat(executorId, accumulatorUpdates, blockManagerId, executorUpdates)</code> goes to the driver&#39;s <a href="heartbeat-receiver.html">HeartbeatReceiver</a>, not the AM. A successful <code>HeartbeatResponse</code> resets the failure count and can request <strong>block manager</strong> re-registration. Repeated send/response failures reaching the configured maximum make the executor exit. Separately, the driver <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/HeartbeatReceiver.scala#L210-L246">expires executors</a> whose last heartbeat is too old. A heartbeat is neither task completion nor a request to launch more tasks. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/executor/Executor.scala#L1543-L1591">Heartbeat request and reply</a></li>
+<li><strong>Retire.</strong> During decommission the driver stops offering new work and the backend monitors draining. The executor&#39;s local flag diagnoses a racing launch; it is <strong>not</strong> a hard rejection in <code>launchTask</code>. <code>stop()</code> is guarded by an atomic flag: it reports metrics, stops polling and heartbeats, shuts down the task pool and kill-mark timer, notifies plugins and stops the non-local <code>SparkEnv</code>. The shutdown hook uses the same method. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/executor/Executor.scala#L541-L639">Decommission and launch</a> | <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/executor/Executor.scala#L651-L688">Stop sequence</a></li>
+</ol>
+<p><strong>Failure clue:</strong> If one TID stops making progress while heartbeats and other attempts continue, look at that task rather than treating the whole container as lost. With the reaper enabled, <code>Killed task ... is still running</code> means cancellation was requested but the code has not finished; the reaper can log its stack. Only if a configured positive kill timeout expires does the non-local reaper escalate a stuck kill to JVM failure. Conversely, <code>Issue communicating with driver in heartbeater</code> is from the heartbeat thread; it does not identify a particular task. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/executor/Executor.scala#L1274-L1332">Reaper decisions</a> | <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/executor/Executor.scala#L1543-L1591">Heartbeat failure counter</a></p>
+<p>For a PySpark job, a JVM-only expression stays on the task thread. When the plan actually invokes Python, a <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/api/python/PythonRunner.scala#L763-L806">Python runner</a> obtains a worker and streams input/output for that attempt. The worker does not register as another Spark executor or receive <code>LaunchTask</code> from YARN.</p>
+</main></html>

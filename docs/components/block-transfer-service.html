@@ -1,0 +1,71 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Block transfer service: from a block name to bytes on a socket · Troubleshoot Spark</title><link rel="stylesheet" href="../style.css"><main class="reader"><nav><a href=".././#map">Diagnostic map</a> · <a href="../guide.html">Lifecycle</a> · <a href="../scenarios.html">Cases</a> · <a href="../components/index.html">Components</a></nav><h1 id="block-transfer-service-from-a-block-name-to-bytes-on-a-socket">Block transfer service: from a block name to bytes on a socket</h1>
+<p><a href="index.html">component index</a> | <a href="block-manager.html">BlockManager</a> | <a href="block-manager-master.html">BlockManagerMaster</a></p>
+<p><code>NettyBlockTransferService</code> moves blocks between JVMs. Its caller must already know <strong>which host, port, executor and block IDs to request</strong>. It does not discover the producer, schedule a task, or recompute a partition. A successful lookup at the driver and a successful fetch at the producer are separate events.</p>
+<h2 id="flow-at-a-glance">Flow at a glance</h2>
+<ol>
+<li><strong>Executor 5</strong>: Ask executor 2 to open a broadcast piece.</li>
+<li><strong>Executor 2</strong>: Return a stream handle for the piece.</li>
+<li><strong>Executor 5</strong>: Request the chunk and receive its bytes.</li>
+</ol>
+<blockquote>
+<p><strong>Key distinction:</strong> The open reply identifies the stream; the chunk response carries the bytes.</p>
+</blockquote>
+<details>
+<summary>Show the animated flow</summary>
+
+<p><img src="visuals/block-transfer-service.svg" alt="Executor 5 opens broadcast_9_piece1 on executor 2, gets a stream handle, then fetches the chunk containing the piece."></p>
+</details>
+
+<h2 id="runtime-endpoints-and-contracts">Runtime, endpoints and contracts</h2>
+<p>The driver and every executor construct a service in their own <code>SparkEnv</code>. <code>BlockManager.initialize</code> passes itself in as the local <code>BlockDataManager</code>. <code>init</code> creates a Netty <code>TransportContext</code>, client factory, bound <code>TransportServer</code>, and <code>NettyBlockRpcServer</code>; it configures the shuffle transport and supplies authentication bootstraps when enabled. The executor uses <code>spark.blockManager.port</code> (default <code>0</code>, choose a port); <code>spark.driver.blockManager.port</code> overrides it on the driver. The <code>BlockManagerId</code> advertises the actual bound transfer port, <strong>not</strong> the driver&#39;s scheduler RPC port. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/SparkEnv.scala#L761-L806">Wiring and port choice</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/internal/config/package.scala#L1273-L1282">port defaults</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/network/netty/NettyBlockTransferService.scala#L49-L104">server setup</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/storage/BlockManager.scala#L698-L748">registration</a></p>
+<table>
+<thead>
+<tr>
+<th>Operation</th>
+<th>Inputs</th>
+<th>Observable result</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>fetchBlocks</code></td>
+<td>Target host/port and executor ID, array of block-name strings, <code>BlockFetchingListener</code>, optional <code>DownloadFileManager</code></td>
+<td>Asynchronous <code>onBlockFetchSuccess(id, ManagedBuffer)</code> or <code>onBlockFetchFailure(id, cause)</code> per block.</td>
+</tr>
+<tr>
+<td><code>fetchBlockSync</code></td>
+<td>Same address, one block ID and optional download manager</td>
+<td>Waits on a promise. File-backed or encrypted results are passed through; other received buffers are copied so the returned buffer lives beyond the callback.</td>
+</tr>
+<tr>
+<td><code>uploadBlock</code> / <code>uploadBlockSync</code></td>
+<td>Target, <code>BlockId</code>, <code>ManagedBuffer</code> payload, <code>StorageLevel</code>, class tag, optional checksum and seal flag</td>
+<td>A <code>Future[Unit]</code> acknowledgement or failure; the sync wrapper waits. An acknowledgement is not a directory of replicas.</td>
+</tr>
+</tbody></table>
+<p><a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/network/netty/NettyBlockTransferService.scala#L119-L166">Fetch implementation</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/network/BlockTransferService.scala#L71-L131">synchronous adapters</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/network/netty/NettyBlockTransferService.scala#L170-L219">upload framing</a></p>
+<h2 id="follow-broadcast_9_piece1-from-executor-2-to-executor-5">Follow <code>broadcast_9_piece1</code> from executor 2 to executor 5</h2>
+<p>Assume the piece is absent locally, the master has returned executor 2, and the two executors are on different hosts. The driver&#39;s response is metadata. Only the last exchange below carries the piece itself.</p>
+<figure class="source-figure"><a href="../diagrams/components-block-transfer-service-1.svg" title="Open diagram at full size"><img loading="lazy" src="../diagrams/components-block-transfer-service-1.svg" alt="Sequence diagram for components block transfer service; open to enlarge"></a><figcaption>Sequence diagram · <a href="../diagrams/components-block-transfer-service-1.svg">Open full size</a></figcaption><details><summary>Text equivalent</summary><pre>sequenceDiagram
+    participant C as Executor 5 BlockManager
+    participant D as Driver directory
+    participant N as Executor 2 Netty server
+    participant S as Executor 2 local BlockManager
+    C-&gt;&gt;D: GetLocationsAndStatus(block ID, requester host)
+    D--&gt;&gt;C: Candidate IDs, host, port, status
+    C-&gt;&gt;N: OpenBlocks(app ID, executor ID, block IDs)
+    N-&gt;&gt;S: getLocalBlockData(block ID) inside JVM
+    S--&gt;&gt;N: ManagedBuffer
+    N--&gt;&gt;C: StreamHandle(stream ID, chunk count)
+    C-&gt;&gt;N: Fetch chunk(stream ID, index)
+    N--&gt;&gt;C: Serialized piece bytes</pre></details></figure>
+<ol>
+<li>The requesting service obtains a <code>TransportClient</code>. <code>OneForOneBlockFetcher</code> uses <code>OpenBlocks</code> for RDD blocks and broadcast pieces. With the new protocol, a set of shuffle blocks instead gets a shuffle-specific request (including grouped map/reduce IDs); old-protocol requests use <code>OpenBlocks</code>. These are messages on the <strong>block transfer connection</strong>, not Spark scheduler RPCs. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/common/network-shuffle/src/main/java/org/apache/spark/network/shuffle/OneForOneBlockFetcher.java#L85-L123">Protocol selection</a></li>
+<li>On the serving executor the handler translates names into <code>BlockId</code>s and asks the local block manager for buffers. For an ordinary block that means local serialized bytes; for a shuffle block it delegates to the shuffle resolver. It registers the buffers with <code>OneForOneStreamManager</code>, associates the stream with the client channel, and returns a <strong>handle</strong>, not the payload. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/network/netty/NettyBlockRpcServer.scala#L78-L122">Open request handler</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/storage/BlockManager.scala#L893-L917">local provider</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/common/network-common/src/main/java/org/apache/spark/network/server/OneForOneStreamManager.java#L230-L257">stream ownership</a></li>
+<li>The requester issues a chunk request per index; the index maps back to a block ID for the listener. If the caller provided a download manager, the fetcher instead streams each chunk to a temporary file and delivers a file-backed buffer. The ordinary block manager chooses that path when the reported block size exceeds <code>spark.network.maxRemoteBlockSizeFetchToMem</code> (default <code>200m</code>). A local in-JVM hit and a successful direct read of another executor&#39;s same-host disk file bypass this network transfer. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/common/network-shuffle/src/main/java/org/apache/spark/network/shuffle/OneForOneBlockFetcher.java#L282-L332">Chunk callbacks and download</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/storage/BlockManager.scala#L1328-L1408">caller decisions</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/internal/config/package.scala#L1536-L1552">threshold</a></li>
+</ol>
+<p><strong>Reverse direction: replication.</strong> An upload sends storage/type metadata plus the bytes. Small non-shuffle blocks use <code>UploadBlock</code> in a single RPC; blocks above the threshold and shuffle uploads use <code>UploadBlockStream</code> with a header and a separate data stream. The receiver calls <code>putBlockData</code> or <code>putBlockDataAsStream</code>; an ordinary streamed block is accumulated in a temp file, then admitted to the local store, while shuffle migration goes through its resolver. Failure to store is not a successful replication. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/network/netty/NettyBlockTransferService.scala#L170-L219">Upload sender</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/network/netty/NettyBlockRpcServer.scala#L123-L145">receiver</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/storage/BlockManager.scala#L937-L992">stream completion and failure</a></p>
+<h2 id="failure-cleanup-and-diagnosis">Failure, cleanup and diagnosis</h2>
+<p><code>RetryingBlockTransferor</code> retries <strong>outstanding</strong> IDs for eligible I/O failures after a wait and within its retry limit; stale callbacks from an earlier attempt are ignored. This is retrying a transfer to the same target. Trying another reported replica is a separate <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/storage/BlockManager.scala#L1395-L1467">BlockManager decision</a>. A failed connection can also prompt a driver liveness query; a known-dead executor is reported distinctly. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/network/netty/NettyBlockTransferService.scala#L119-L166">Fetch startup/error handling</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/common/network-shuffle/src/main/java/org/apache/spark/network/shuffle/RetryingBlockTransferor.java#L203-L323">retry selection and state</a></p>
+<p>Match the failing block ID with the <strong>advertised host:port</strong> on the producer. A connection failure before <code>StreamHandle</code> is different from “block not found” on a live server, and both differ from a consumer disk error writing a downloaded chunk. The <a href="external-shuffle-service.html">external shuffle service</a>, when configured, is a separate listener outside the executor JVM that can serve shuffle files (and optionally disk RDD blocks). YARN&#39;s ResourceManager does not relay the bytes. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/storage/BlockManager.scala#L698-L748">Service address versus executor address</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/internal/config/package.scala#L872-L880">disk-RDD option</a></p>
+<p>Downloaded files are registered for cleanup or deleted on failure. On the ordinary in-memory receive path the transport releases a chunk buffer after its callback; a caller keeping it must retain or copy it. The server stream is scoped to the connection; when the owning block manager stops, the service closes its server, client factory and transport context. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/common/network-shuffle/src/main/java/org/apache/spark/network/shuffle/OneForOneBlockFetcher.java#L346-L392">Download cleanup</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/common/network-common/src/main/java/org/apache/spark/network/client/TransportResponseHandler.java#L166-L178">callback buffer lifetime</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/network/netty/NettyBlockTransferService.scala#L222-L232">shutdown</a></p>
+</main></html>

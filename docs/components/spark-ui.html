@@ -1,0 +1,49 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Live Spark UI: reading the driver's status store · Troubleshoot Spark</title><link rel="stylesheet" href="../style.css"><main class="reader"><nav><a href=".././#map">Diagnostic map</a> · <a href="../guide.html">Lifecycle</a> · <a href="../scenarios.html">Cases</a> · <a href="../components/index.html">Components</a></nav><h1 id="live-spark-ui-reading-the-driver39s-status-store">Live Spark UI: reading the driver&#39;s status store</h1>
+<p><a href="index.html">component index</a></p>
+<p>A browser asking how many tasks finished in stage <code>3</code> does <strong>not</strong> poll its executors or replay the event log. The live <code>SparkUI</code> serves the status that the <strong>driver JVM</strong> has already assembled. On YARN, that is the AM JVM in cluster mode and the submitting client&#39;s driver JVM in client mode. The YARN application tracking link can lead to this UI; the ResourceManager does not compute its stage metrics.</p>
+<h2 id="flow-at-a-glance">Flow at a glance</h2>
+<ol>
+<li><strong>Status queue</strong>: Delivers task events to the status listener in the driver.</li>
+<li><strong>Status listener</strong>: The listener writes task-attempt records and updates stage counts in the driver&#39;s store.</li>
+<li><strong>Stages page</strong>: The UI reads the selected stage attempt from the store and displays its task rows.</li>
+</ol>
+<blockquote>
+<p><strong>Watch for:</strong> Two task IDs for one partition can mean a failed first attempt and a successful retry.</p>
+</blockquote>
+<details>
+<summary>Show the animated flow</summary>
+
+<p><img src="visuals/spark-ui.svg" alt="Task events update the driver's status store, which supplies the Stages page for a specific attempt"></p>
+</details>
+
+<h2 id="startup-request-path-and-shutdown">Startup, request path and shutdown</h2>
+<p><code>SparkContext</code> <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/SparkContext.scala#L534-L571">creates the live <code>AppStatusStore</code> and registers its listener</a> before constructing <code>SparkEnv</code>, even if <code>spark.ui.enabled=false</code>. If the UI is enabled, it constructs <code>SparkUI</code> with <code>Some(sc)</code> and the store, and binds Jetty <strong>before</strong> starting the scheduler. The <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/ui/SparkUI.scala#L66-L128">initial HTTP handler</a> reports that Spark is starting. Later the context sets the app ID and <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/SparkContext.scala#L695-L755">attaches the real handlers</a>. Jobs, Stages, Storage, Environment, Executors and the REST API are mounted on the same server. The <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/internal/config/UI.scala#L39-L49">configured port</a> defaults to <code>4040</code>; use the actual URL, not an assumed port. In cluster mode the AM <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/deploy/yarn/ApplicationMaster.scala#L496-L513">registers the driver&#39;s UI URL with YARN</a>.</p>
+<table>
+<thead>
+<tr>
+<th>Boundary</th>
+<th>Data and contract</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Producers to status listener</td>
+<td>The <a href="listener-bus.html">listener bus</a> <code>appStatus</code> queue delivers job/stage/task lifecycles, executor changes, block updates and metrics from <a href="heartbeat-receiver.html">heartbeats</a>. The listener owns <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/status/AppStatusListener.scala#L48-L110">live maps</a> keyed by job ID, <code>(stageId, attemptId)</code>, task attempt ID, executor ID and RDD ID.</td>
+</tr>
+<tr>
+<td>Listener to store</td>
+<td><code>AppStatusListener</code> updates those entities, then writes queryable records to an <code>ElementTrackingStore</code> over a KV store. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/status/AppStatusStore.scala#L857-L880"><code>createLiveStore</code></a> selects memory by default or an optional local store under <code>spark.ui.store.path</code>. An update to an active entity <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/status/AppStatusListener.scala#L1264-L1280">can be throttled</a>; final task state is written directly.</td>
+</tr>
+<tr>
+<td>Request to response</td>
+<td>A stage page <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/ui/jobs/StagePage.scala#L99-L119">looks up the requested stage <strong>attempt</strong></a> through <code>AppStatusStore</code>; the <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/status/api/v1/StagesResource.scala#L83-L107">versioned REST resource</a> queries the same store and returns structured data. Rendering a status page does not schedule a task. An explicit live action is different: a <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/ui/jobs/JobsTab.scala#L56-L69">job-cancel request</a> checks configuration, permissions and job state before calling <code>SparkContext.cancelJob</code>.</td>
+</tr>
+<tr>
+<td>SQL execution to jobs</td>
+<td>For a DataFrame query, <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/internal/SharedState.scala#L118-L129"><code>SharedState</code> registers <code>SQLAppStatusListener</code></a>, creates <code>SQLAppStatusStore</code> over the same underlying store and attaches the SQL tab. The SQL listener <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/ui/SQLAppStatusListener.scala#L78-L97">correlates a job via its SQL execution ID</a>. A SQL execution ID, Spark job ID and stage attempt ID are different keys.</td>
+</tr>
+</tbody></table>
+<p><code>SparkContext.stop()</code> <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/SparkContext.scala#L2638-L2654">stops the UI server</a> and later <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/SparkContext.scala#L2713-L2722">closes the status store</a>. Disabling or losing that HTTP server is not the same as disabling scheduler events. After the driver goes away, the <a href="history-server.html">History Server</a>, if available, serves a <strong>different</strong> store rebuilt from persisted records, not the driver&#39;s address or its heap.</p>
+<h2 id="worked-example-a-failed-task-in-a-successful-stage">Worked example: a failed task in a successful stage</h2>
+<p>In stage <code>3</code>, attempt <code>0</code>, partition <code>5</code> first runs as task ID <code>83</code>. On <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/status/AppStatusListener.scala#L619-L659">task start</a>, the listener creates a <code>LiveTask</code> keyed by <code>83</code>, increments the stage&#39;s active count and updates the executor&#39;s task counts. A heartbeat can update in-flight metrics <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/status/AppStatusListener.scala#L970-L1012">by delta</a>. On <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/status/AppStatusListener.scala#L669-L734">task end</a>, it removes <code>83</code> from the live map, writes its final row and failure reason, and updates failed/active counts. If task ID <code>84</code> retries partition <code>5</code> successfully, the listener records another attempt and marks the partition index complete. The Stages tab can therefore show a failed attempt <strong>and</strong> a successful stage. <code>GET /api/v1/applications/&lt;appId&gt;/stages/3/0</code> addresses the stage attempt, not either task ID.</p>
+<p><strong>What a blank or stale row means:</strong> the status queue may be behind or have dropped an event; periodic updates are intentionally coalesced. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/internal/config/Status.scala#L29-L60">Retention limits</a> can evict older jobs, stages and task details. Check the attempt ID, queue metrics and retention before inferring that work never ran. Spark task metrics describe attempts; they are not YARN node-health samples, raw Python output or a record of every row processed.</p>
+</main></html>

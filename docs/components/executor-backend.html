@@ -1,0 +1,66 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Executor backend: from YARN container to schedulable executor · Troubleshoot Spark</title><link rel="stylesheet" href="../style.css"><main class="reader"><nav><a href=".././#map">Diagnostic map</a> · <a href="../guide.html">Lifecycle</a> · <a href="../scenarios.html">Cases</a> · <a href="../components/index.html">Components</a></nav><h1 id="executor-backend-from-yarn-container-to-schedulable-executor">Executor backend: from YARN container to schedulable executor</h1>
+<p><a href="index.html">component index</a> | <a href="../guide.html">Lifecycle guide</a></p>
+<p><code>YarnCoarseGrainedExecutorBackend</code> is the <strong>scheduler-facing endpoint in an executor JVM</strong>. The <a href="node-manager.html">NodeManager</a> launches that JVM; the backend speaks <a href="rpc-env.html">Spark RPC</a> to the driver in either deploy mode. It turns <code>LaunchTask</code> messages into local method calls and turns local status updates back into driver messages. It neither allocates containers nor runs partition code on its RPC thread.</p>
+<h2 id="flow-at-a-glance">Flow at a glance</h2>
+<ol>
+<li><strong>Driver</strong>: Register the executor with zero free cores.</li>
+<li><strong>Executor backend</strong>: Build the local runtime and report it ready.</li>
+<li><strong>Driver backend</strong>: Offer the executor&#39;s cores to the scheduler.</li>
+</ol>
+<blockquote>
+<p><strong>Key distinction:</strong> The executor-added event confirms registration. Its cores become available only after the driver receives <code>LaunchedExecutor</code>.</p>
+</blockquote>
+<details>
+<summary>Show the animated flow</summary>
+
+<p><img src="visuals/executor-backend.svg" alt="The driver holds the executor at zero free cores until the backend reports that its runtime is ready."></p>
+</details>
+
+<h2 id="one-launch-three-milestones">One launch, three milestones</h2>
+<figure class="source-figure"><a href="../diagrams/components-executor-backend-1.svg" title="Open diagram at full size"><img loading="lazy" src="../diagrams/components-executor-backend-1.svg" alt="Sequence diagram for components executor backend; open to enlarge"></a><figcaption>Sequence diagram · <a href="../diagrams/components-executor-backend-1.svg">Open full size</a></figcaption><details><summary>Text equivalent</summary><pre>sequenceDiagram
+    participant N as YARN NodeManager
+    participant B as Executor JVM / backend
+    participant D as Spark driver
+    participant E as Executor runtime
+    N-&gt;&gt;B: Start JVM with driver URL and executor ID
+    B-&gt;&gt;D: RetrieveSparkAppConfig(resourceProfileId) via temporary RpcEnv
+    D--&gt;&gt;B: SparkAppConfig
+    B-&gt;&gt;D: RegisterExecutor(id, endpoint ref, host, cores, resources, ...)
+    Note over D: Record executor with zero free cores
+    D--&gt;&gt;B: true
+    B-&gt;&gt;B: RegisteredExecutor (local message)
+    B-&gt;&gt;E: Construct Executor in this JVM
+    B-&gt;&gt;D: LaunchedExecutor(id)
+    Note over D: Make cores available and offer them
+    D-&gt;&gt;B: LaunchTask(encoded TaskDescription)
+    B-&gt;&gt;E: launchTask(backend, description)</pre></details></figure>
+<ol>
+<li><strong>Container running.</strong> The AM supplies the <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/deploy/yarn/ExecutorRunnable.scala#L196-L211">launch command</a>: driver URL, executor ID, hostname, cores, application ID and resource-profile ID. The <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/executor/YarnCoarseGrainedExecutorBackend.scala#L36-L86">YARN entry point</a> supplies the YARN user classpath, log URLs and container attributes; it delegates the protocol to <code>CoarseGrainedExecutorBackend</code>. A temporary client-only <code>driverPropsFetcher</code> resolves the driver endpoint (up to three lookup attempts), then synchronously asks for the profile&#39;s <code>SparkAppConfig</code>. The reply includes Spark properties, the profile and optional credentials, I/O encryption key and log level. The fetcher shuts down; this is <strong>not</strong> the channel retained for task launches. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/executor/CoarseGrainedExecutorBackend.scala#L439-L538">Bootstrap</a></li>
+<li><strong>Registered.</strong> The process builds the executor <code>SparkEnv</code>, initializes its credential state and registers the backend under the endpoint name <code>Executor</code>. Its <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/executor/CoarseGrainedExecutorBackend.scala#L48-L116"><code>onStart</code></a> checks direct memory when applicable, discovers resource addresses and asynchronously asks the driver to register <code>self</code>. The <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/cluster/CoarseGrainedSchedulerBackend.scala#L261-L352">driver</a> rejects a duplicate ID or excluded executor/host; on acceptance it stores <code>ExecutorData</code> with <strong>zero free cores</strong>, posts <code>SparkListenerExecutorAdded</code> and replies <code>true</code>. That reply is not a <code>LaunchTask</code>.</li>
+<li><strong>Ready.</strong> The registration callback posts <code>RegisteredExecutor</code> <strong>to itself</strong>, not to the driver. The endpoint constructs the <a href="executor.html">Executor runtime</a> and only then sends <code>LaunchedExecutor</code>. The <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/cluster/CoarseGrainedSchedulerBackend.scala#L246-L251">driver&#39;s readiness handler</a> sets free cores to total cores and makes resource offers. A registered executor visible to a listener need not yet have offered any capacity. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/executor/CoarseGrainedExecutorBackend.scala#L167-L234">Executor-side handoff</a></li>
+</ol>
+<h2 id="steady-state-contract-and-shutdown">Steady-state contract and shutdown</h2>
+<table>
+<thead>
+<tr>
+<th>Direction</th>
+<th>What crosses the boundary</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Driver to backend</td>
+<td><code>LaunchTask</code> carries an encoded description; the backend decodes it and calls <code>executor.launchTask</code>. <code>KillTask</code> supplies the attempt ID, interrupt flag and reason; the backend delegates to <code>executor.killTask</code>. Neither command starts a container.</td>
+</tr>
+<tr>
+<td>Task runner to backend to driver</td>
+<td><code>statusUpdate</code> joins the attempt ID, state and payload to the CPU/resource assignments in <code>runningTasks</code>, then sends <code>StatusUpdate</code>. On terminal status the driver passes the data to the scheduler and returns resources to its offers; it need not wait for <a href="task-result-getter.html">result retrieval</a>.</td>
+</tr>
+<tr>
+<td>Driver to backend, during operation or retirement</td>
+<td>Credential updates refresh executor-side state. <code>DecommissionExecutor</code> starts a drain if enabled; <code>StopExecutor</code> instead schedules shutdown.</td>
+</tr>
+</tbody></table>
+<p>Before sending <code>LaunchTask</code>, the driver also checks the encoded <code>TaskDescription</code>. If it is at least the RPC message limit, the <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/cluster/CoarseGrainedSchedulerBackend.scala#L457-L486">driver aborts the task set</a>. This limits serialized launch instructions, <strong>not</strong> the size of the input partition or the eventual result.</p>
+<p>The endpoint has <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/rpc/RpcEndpoint.scala#L166-L177">one dedicated dispatch thread</a>. It keeps a volatile driver ref, an initially null executor and an atomic <code>stopping</code> flag. Tasks call the <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/executor/CoarseGrainedExecutorBackend.scala#L260-L316">status path</a> from other threads. During decommission the backend can wait for running tasks and, if configured, block migration; a last-task-finish timestamp prevents accepting an out-of-date migration check. A normal stop posts <code>Shutdown</code> locally and calls <code>executor.stop()</code> on <strong>another thread</strong>: stopping <code>SparkEnv</code> waits for RPC termination, so doing that inside the dispatcher could deadlock. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/executor/CoarseGrainedExecutorBackend.scala#L167-L234">Commands and stop</a> | <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/executor/CoarseGrainedExecutorBackend.scala#L319-L387">Drain condition</a></p>
+<p><strong>Failure clue:</strong> If YARN shows a running container but Spark has no usable executor, find the last milestone. A failed config lookup precedes registration; <code>Cannot register with driver</code> is a lookup/registration failure in <code>onStart</code>; <code>Successfully registered with driver</code> followed by an executor construction error narrows the problem to the readiness gap. If the established driver disconnects unexpectedly, the backend initiates shutdown without trying to notify that driver. In the opposite direction, the <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/scheduler/cluster/YarnSchedulerBackend.scala#L270-L328">YARN driver endpoint</a> disables a disconnected executor and asks the AM for its loss reason; a lost socket alone does not establish that the task caused the exit.</p>
+</main></html>

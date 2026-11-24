@@ -1,0 +1,115 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>HDFS DataNode: following one packet through three replicas · Troubleshoot Spark</title><link rel="stylesheet" href="../style.css"><main class="reader"><nav><a href=".././#map">Diagnostic map</a> · <a href="../guide.html">Lifecycle</a> · <a href="../scenarios.html">Cases</a> · <a href="../components/index.html">Components</a></nav><h1 id="hdfs-datanode-following-one-packet-through-three-replicas">HDFS DataNode: following one packet through three replicas</h1>
+<p><a href="index.html">component index</a> | <a href="../guide.html">PySpark on YARN walkthrough</a></p>
+<p>A DataNode stores and serves <strong>replicated HDFS block bytes</strong>. It receives a
+block identity, not a Parquet path, Spark partition ID, or YARN container ID.
+The <a href="hdfs-namenode.html">NameNode</a> resolves the path and chooses write targets.
+A worker can run both a DataNode and a NodeManager: stopping an executor does
+not delete HDFS data, and a local Spark shuffle file is not an HDFS replica.</p>
+<h2 id="flow-at-a-glance">Flow at a glance</h2>
+<ol>
+<li><strong>HDFS writer</strong>: Send packet 42 of an output block to DataNode A.</li>
+<li><strong>DataNodes A, B and C</strong>: Write local replicas as A forwards the packet to B and B forwards it to C.</li>
+<li><strong>Pipeline ACK</strong>: Return packet 42&#39;s status from C through B and A to the writer.</li>
+</ol>
+<blockquote>
+<p><strong>Key distinction:</strong> A successful packet ACK neither closes the HDFS file nor commits the Spark job.</p>
+</blockquote>
+<details>
+<summary>Show the animated flow</summary>
+
+<p><img src="visuals/hdfs-datanode.svg" alt="Packet 42 travels from the writer through A, B and C; its acknowledgment travels back through B and A to the writer."></p>
+</details>
+
+<h2 id="runtime-boundary-and-local-state">Runtime boundary and local state</h2>
+<p>The DataNode is a storage-service JVM, started and stopped by cluster operations.
+The NameNode monitors its heartbeats and reconciles block reports; operators
+monitor failed volumes and transfer errors. The service and its replicas outlive
+the Spark application that wrote the file.</p>
+<p>On ordinary disk storage, a block pool and block ID identify local replica
+data (e.g. <code>blk_123</code>); an accompanying <code>blk_123_&lt;generationStamp&gt;.meta</code> holds
+checksum metadata. The generation stamp distinguishes versions during recovery.
+A replica being written (<code>RBW</code>) and a finalized replica are different states.
+Finalizing one block on one node does not close the file in the namespace.</p>
+<h2 id="three-independent-conversations">Three independent conversations</h2>
+<table>
+<thead>
+<tr>
+<th>Caller and protocol</th>
+<th>Input</th>
+<th>Response or side effect</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Reader to a DataNode, <code>DataTransferProtocol.readBlock</code></td>
+<td>Extended block identity, block token when enabled, offset within block, length, checksum request</td>
+<td><code>DataXceiver</code> checks access; <code>BlockSender</code> streams packets for the range with checksum information. The reader normally needs only <strong>one</strong> healthy replica. Configured short-circuit local reads can avoid the data TCP path.</td>
+</tr>
+<tr>
+<td>Writer or upstream DataNode to a DataNode, <code>DataTransferProtocol.writeBlock</code></td>
+<td>Block, access token, construction stage, remaining pipeline targets, checksum settings, then sequenced packets</td>
+<td>A <code>BlockReceiver</code> writes the local replica and forwards packets downstream where applicable. A <code>PacketResponder</code> returns per-packet pipeline status upstream; an ordinary packet acknowledgement is not an <code>fsync</code> guarantee.</td>
+</tr>
+<tr>
+<td>DataNode to NameNode, <code>DatanodeProtocol</code> RPC</td>
+<td>Registration, capacity/liveness heartbeats, full inventory (<code>blockReport</code>), and incremental received/deleted reports</td>
+<td>The NameNode updates its location map and may return transfer or invalidation commands. A source DataNode transfers bytes to a target; a heartbeat carries commands and status, not replica contents.</td>
+</tr>
+</tbody></table>
+<h2 id="worked-flow-writing-one-paid-orders-output-block">Worked flow: writing one paid-orders output block</h2>
+<p>Assume a replicated file with three available targets, A, B, and C. This
+replication factor has <strong>no relationship</strong> to the walkthrough&#39;s three Spark
+executors. One executor can write all three replicas through one pipeline.</p>
+<figure class="source-figure"><a href="../diagrams/components-hdfs-datanode-1.svg" title="Open diagram at full size"><img loading="lazy" src="../diagrams/components-hdfs-datanode-1.svg" alt="Sequence diagram for components hdfs datanode; open to enlarge"></a><figcaption>Sequence diagram · <a href="../diagrams/components-hdfs-datanode-1.svg">Open full size</a></figcaption><details><summary>Text equivalent</summary><pre>sequenceDiagram
+    participant W as Executor's HDFS client
+    participant N as NameNode
+    participant A as DataNode A
+    participant B as DataNode B
+    participant C as DataNode C
+    W-&gt;&gt;N: addBlock for output part
+    N--&gt;&gt;W: LocatedBlock with A, B, C
+    W-&gt;&gt;A: WRITE_BLOCK and packet k
+    A-&gt;&gt;B: Forward packet k
+    B-&gt;&gt;C: Forward packet k
+    C--&gt;&gt;B: ACK k
+    B--&gt;&gt;A: ACK k with downstream status
+    A--&gt;&gt;W: ACK k with pipeline statuses
+    Note over A,C: Each stores a replica and reports it to the NameNode
+    W-&gt;&gt;N: complete file after the last block</pre></details></figure>
+<ol>
+<li>Spark&#39;s output task obtains a <code>LocatedBlock</code> for its part file. The HDFS client connects to A&#39;s <strong>data-transfer address</strong>. A sets up the connection to B; B sets up the connection to C. The client does not upload the same packet to all three.</li>
+<li>The client&#39;s <code>DataStreamer</code> tracks sent packets awaiting acknowledgements. A, B, and C populate their local replicas as packets flow; acknowledgements travel in reverse order. A successful pipeline acknowledgement retires that sequence number at the client.</li>
+<li>If B fails mid-block, the client can rebuild a pipeline with the surviving nodes, coordinate a new generation stamp with the NameNode, and resend outstanding packets. Whether a replacement joins immediately depends on policy and available nodes. This recovery happens inside the same Spark task; it is not a YARN container retry.</li>
+<li>At end of block the replicas are finalized and reported; the writer separately asks the NameNode to complete the file. Later, a scan task chooses one available replica to read, verifies checksums, and can switch replicas without Spark retrying the whole task.</li>
+</ol>
+<h2 id="what-a-failure-means">What a failure means</h2>
+<table>
+<thead>
+<tr>
+<th>Observation</th>
+<th>Consequence and evidence</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Input listing works, one executor&#39;s read times out</td>
+<td>Check the advertised DataNode transfer address and the node&#39;s transfer log from the affected worker&#39;s network. A NameNode RPC success or a running YARN container does not test that route.</td>
+</tr>
+<tr>
+<td><code>ChecksumException</code> on one replica</td>
+<td>The HDFS client can try another replica and report corruption. Correlate the <code>blk_...</code> in executor/DataNode logs with <code>hdfs fsck &lt;file&gt; -files -blocks -locations</code>; if no readable copy remains, the scan cannot reconstruct the missing bytes.</td>
+</tr>
+<tr>
+<td>Slow or failed write pipeline</td>
+<td>The writer waits on downstream acknowledgements. Inspect the pipeline members named in the HDFS client logs, volume errors, and transfer latency, not just the writer JVM. If the pipeline cannot recover, the output task can fail.</td>
+</tr>
+<tr>
+<td>DataNode stops heartbeating</td>
+<td><code>hdfs dfsadmin -report</code> distinguishes live from dead nodes. With a surviving healthy replica the file can remain readable while the NameNode schedules re-replication. A missing heartbeat by itself does not prove a disk was erased.</td>
+</tr>
+</tbody></table>
+<h2 id="sources">Sources</h2>
+<ul>
+<li>Hadoop 3.4.1: <a href="https://hadoop.apache.org/docs/r3.4.1/hadoop-project-dist/hadoop-hdfs/HdfsDesign.html">replica placement, integrity, and pipelining</a> and <a href="https://hadoop.apache.org/docs/r3.4.1/hadoop-project-dist/hadoop-hdfs/HDFSCommands.html">HDFS diagnostic commands</a>.</li>
+<li>Hadoop 3.4.1 source: <a href="https://github.com/apache/hadoop/blob/4d7825309348956336b8f06a08322b78422849b1/hadoop-hdfs-project/hadoop-hdfs-client/src/main/java/org/apache/hadoop/hdfs/protocol/datatransfer/DataTransferProtocol.java">data-transfer protocol fields</a>, <a href="https://github.com/apache/hadoop/blob/4d7825309348956336b8f06a08322b78422849b1/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/datanode/DataXceiver.java#L580-L930">DataNode read/write handlers</a>, and <a href="https://github.com/apache/hadoop/blob/4d7825309348956336b8f06a08322b78422849b1/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/datanode/BlockReceiver.java">packet receipt and acknowledgement</a>.</li>
+<li>Hadoop 3.4.1 source: <a href="https://github.com/apache/hadoop/blob/4d7825309348956336b8f06a08322b78422849b1/hadoop-hdfs-project/hadoop-hdfs-client/src/main/java/org/apache/hadoop/hdfs/DataStreamer.java#L100-L117">client-side send and ACK queues</a> and <a href="https://github.com/apache/hadoop/blob/4d7825309348956336b8f06a08322b78422849b1/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/datanode/BPServiceActor.java#L666-L757">DataNode reporting loop</a>.</li>
+</ul>
+</main></html>

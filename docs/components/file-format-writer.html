@@ -1,0 +1,74 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>FileFormatWriter: turning a V1 file write into Spark tasks · Troubleshoot Spark</title><link rel="stylesheet" href="../style.css"><main class="reader"><nav><a href=".././#map">Diagnostic map</a> · <a href="../guide.html">Lifecycle</a> · <a href="../scenarios.html">Cases</a> · <a href="../components/index.html">Components</a></nav><h1 id="fileformatwriter-turning-a-v1-file-write-into-spark-tasks">FileFormatWriter: turning a V1 file write into Spark tasks</h1>
+<p><a href="index.html">component index</a></p>
+<p><code>FileFormatWriter</code> coordinates a <strong>Spark SQL DataSource V1</strong> file write. The driver prepares one write job and collects task summaries; executor JVMs consume <code>InternalRow</code> iterators and write the actual files. The format&#39;s <code>OutputWriter</code> encodes bytes, while the <a href="file-commit-protocol.html">file commit protocol</a> chooses paths and finalizes output. A Hadoop <code>Job</code> here supplies configuration and commit contexts: Spark submits Spark tasks, not a second YARN MapReduce application. Python need not run on the executors for a built-in Parquet write.</p>
+<h2 id="flow-at-a-glance">Flow at a glance</h2>
+<ol>
+<li><strong>Spark partition 7</strong>: Feed the write task three east rows followed by one west row.</li>
+<li><strong>Parquet write task</strong>: With a two-row file limit, write two east files and one west file.</li>
+<li><strong>Driver</strong>: After all write tasks succeed, call job commit with their commit messages.</li>
+</ol>
+<blockquote>
+<p><strong>Key distinction:</strong> The task returns a commit message and a write summary to the driver, not three Parquet files.</p>
+</blockquote>
+<details>
+<summary>Show the animated flow</summary>
+
+<p><img src="visuals/file-format-writer.svg" alt="Partition 7's four rows become three files across east and west; the driver collects task messages for job commit."></p>
+</details>
+
+<h2 id="inputs-outputs-and-state">Inputs, outputs, and state</h2>
+<table>
+<thead>
+<tr>
+<th>Boundary</th>
+<th>Contract</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>V1 command to driver</td>
+<td><code>SparkPlan</code>, <code>FileFormat</code>, <code>FileCommitProtocol</code>, <code>OutputSpec</code> (path, custom partition locations, output columns), partition/bucket spec, Hadoop configuration, options, and stats trackers. The calling command decides save mode, including whether to overwrite. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/InsertIntoHadoopFsRelationCommand.scala#L177-L205">Call site</a>.</td>
+</tr>
+<tr>
+<td>Driver to task</td>
+<td>A serializable <code>WriteJobDescription</code>: writer factory, validated data columns, partition columns, bucket spec, output path, Hadoop configuration, limits such as <code>maxRecordsPerFile</code>, and stats trackers. The Spark partition iterator supplies the rows. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/FileFormatWriter.scala#L88-L146">Description construction</a>.</td>
+</tr>
+<tr>
+<td>Task to driver</td>
+<td>One <code>WriteTaskResult</code>: opaque <code>TaskCommitMessage</code> plus <code>ExecutedWriteSummary</code> (updated directory names and per-task stats). No Parquet bytes come back in the task result. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/FileFormatDataWriter.scala#L108-L143">Result construction</a>.</td>
+</tr>
+<tr>
+<td>Driver to caller</td>
+<td>After <code>commitJob</code> and stats processing, a <code>Set[String]</code> of updated partition paths. A catalog-aware command can use the set to refresh partition metadata. This is <strong>not</strong> a list of output files. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/FileFormatWriter.scala#L292-L345">Driver reduction</a>, <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/InsertIntoHadoopFsRelationCommand.scala#L152-L175">catalog handling</a>.</td>
+</tr>
+</tbody></table>
+<h2 id="trace-one-spark-partition-writes-three-parquet-files">Trace: one Spark partition writes three Parquet files</h2>
+<p>Assume this write uses V1 and input partition 7 presents four rows in region order: <code>(east, 10)</code>, <code>(east, 20)</code>, <code>(east, 30)</code>, <code>(west, 40)</code>.</p>
+<pre><code class="language-python">(orders.write.mode(&quot;overwrite&quot;)
+    .option(&quot;partitionOverwriteMode&quot;, &quot;dynamic&quot;)
+    .option(&quot;maxRecordsPerFile&quot;, 2)
+    .partitionBy(&quot;region&quot;)
+    .parquet(&quot;hdfs:///reports/orders&quot;))
+</code></pre>
+<figure class="source-figure"><a href="../diagrams/components-file-format-writer-1.svg" title="Open diagram at full size"><img loading="lazy" src="../diagrams/components-file-format-writer-1.svg" alt="Sequence diagram for components file format writer; open to enlarge"></a><figcaption>Sequence diagram · <a href="../diagrams/components-file-format-writer-1.svg">Open full size</a></figcaption><details><summary>Text equivalent</summary><pre>sequenceDiagram
+    participant C as V1 command on driver
+    participant F as FileFormatWriter
+    participant T as Executor write task
+    participant H as Commit protocol
+    C-&gt;&gt;F: Plan, format, output spec, options, protocol
+    F-&gt;&gt;H: setupJob on driver
+    F-&gt;&gt;T: Run partition 7 with write description
+    T-&gt;&gt;H: setupTask and request paths for new files
+    T-&gt;&gt;T: Encode data rows and close format writers
+    T-&gt;&gt;H: commitTask on executor
+    T--&gt;&gt;F: Commit message and partition stats
+    F-&gt;&gt;H: onTaskCommit, then commitJob when all results arrive
+    F--&gt;&gt;C: Updated partition paths</pre></details></figure>
+<ol>
+<li>The driver separates data columns from directory partition columns, verifies the schema and field names, and calls <code>fileFormat.prepareWrite</code> for the <code>OutputWriterFactory</code>. It calls <code>beforeSetupJob</code> after those checks, then <code>committer.setupJob</code> before materializing an adaptive plan. A static overwrite that fails those checks leaves the old output in place. Once that mode deletes old files, a later abort is not a rollback. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/FileFormatWriter.scala#L148-L181">Preparation and setup</a>.</li>
+<li>The required ordering is dynamic partition columns, then bucket ID, then bucket sort columns when applicable. If input order is insufficient, a local sort or eligible concurrent-writer path handles it. A planned <code>WriteFilesExec</code> runs <code>executeTask</code> per input partition; the fallback <code>runJob</code> closure calls it directly. A zero-partition RDD gets one empty partition so the format has a chance to write metadata. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/FileFormatWriter.scala#L239-L289">Write paths</a>, <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/WriteFiles.scala#L78-L110">planned tasks</a>.</li>
+<li>Each attempt constructs a Hadoop <code>TaskAttemptContext</code> from Spark IDs and calls <code>setupTask</code>. An empty <strong>nonzero</strong> partition gets an empty writer; unpartitioned, unbucketed output gets a single-directory writer. For this ordered example the dynamic single writer tracks current region, file counter, and records in the current file. The third east row rolls to another file; switching to west opens a writer under <code>region=west</code>. The Parquet writer receives the data columns, not <code>region</code>. Other Spark partitions can also write into either directory. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/FileFormatWriter.scala#L378-L445">Task selection</a>, <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/FileFormatDataWriter.scala#L264-L319">path selection and encoding</a>, <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/FileFormatDataWriter.scala#L345-L391">rollover</a>.</li>
+<li>The task closes its writers, calls <code>commitTask</code>, and returns a summary containing <code>region=east</code> and <code>region=west</code>. The driver calls <code>onTaskCommit</code> as results arrive; only after collecting the required results does it call <code>commitJob</code>, process stats, and union the path sets. One Spark partition, two directory partitions, and three files are all consistent.</li>
+</ol>
+<h2 id="diagnosing-an-incomplete-write">Diagnosing an incomplete write</h2>
+<p>An executor log with <code>Task attempt ... aborted</code> identifies a write/close/task-commit failure: follow the attempt&#39;s original exception and output path. A driver log with <code>Start to commit write Job</code> but no <code>committed</code> line points instead to job finalization after task results arrived. The writer requests task or job abort in its failure paths; abort may clean staging files, not undo already visible data. Check the selected Hadoop committer and filesystem before interpreting a directory listing. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/FileFormatWriter.scala#L378-L445">Task failure path</a>, <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/FileFormatWriter.scala#L210-L224">driver abort</a>.</p>
+</main></html>

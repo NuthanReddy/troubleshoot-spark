@@ -1,0 +1,83 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Python worker: executing one partition's Python code · Troubleshoot Spark</title><link rel="stylesheet" href="../style.css"><main class="reader"><nav><a href=".././#map">Diagnostic map</a> · <a href="../guide.html">Lifecycle</a> · <a href="../scenarios.html">Cases</a> · <a href="../components/index.html">Components</a></nav><h1 id="python-worker-executing-one-partition39s-python-code">Python worker: executing one partition&#39;s Python code</h1>
+<p><a href="index.html">component index</a></p>
+<p><code>pyspark.worker</code> runs the supplied Python function in a process local to the executor. <strong>Its unit of work is one invocation for a task attempt, not the application script.</strong> The Python driver constructs the computation; the <a href="python-runner.html">runner</a> in an executor JVM supplies the invocation over a socket. The <a href="python-worker-factory.html">factory</a> may provide the same interpreter to later attempts. A PySpark DataFrame expression implemented entirely in the JVM does not need this worker just because the application was written in Python.</p>
+<h2 id="flow-at-a-glance">Flow at a glance</h2>
+<ol>
+<li><strong>Python worker</strong>: The worker sets up this task&#39;s context and loads the partition function.</li>
+<li><strong>Partition function</strong>: The function adds one to each input, turning 4 and 9 into 5 and 10.</li>
+<li><strong>Result stream</strong>: The worker streams those values to the executor JVM, then confirms a clean finish.</li>
+</ol>
+<blockquote>
+<p><strong>Key distinction:</strong> Reuse keeps the interpreter alive, not the previous task&#39;s context or input iterator.</p>
+</blockquote>
+<details>
+<summary>Show the animated flow</summary>
+
+<p><img src="visuals/python-worker.svg" alt="A Python worker loads a partition function, adds one to two values, and streams both results to the executor"></p>
+</details>
+
+<h2 id="contract-and-state">Contract and state</h2>
+<table>
+<thead>
+<tr>
+<th>Lifetime</th>
+<th>State and data</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Process</td>
+<td>Interpreter, imported modules, and a broadcast registry can survive reuse. The daemon&#39;s child loop calls <code>worker.main</code> again after a successful invocation when reuse is enabled. A directly launched worker&#39;s entry point instead connects back and calls <code>main</code> once.</td>
+</tr>
+<tr>
+<td>Invocation</td>
+<td>A new socket message receiver, <code>WorkerInitInfo</code>, Python <code>TaskContext</code>, eval type, function/serializers, metrics, and input iterator. The header includes the split index, driver Python version, task/attempt identifiers, local properties/resources, includes, and broadcast changes.</td>
+</tr>
+<tr>
+<td>Output</td>
+<td>Serialized results to the <strong>local JVM</strong>, plus an initialization reply, metrics, accumulator updates, and a finish reply. Worker stdout/stderr are diagnostics, not a record stream to the driver.</td>
+</tr>
+</tbody></table>
+<p>See the <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/python/pyspark/worker_message.py#L217-L280">init message layout</a>, <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/python/pyspark/messages/spark_message_receiver.py#L51-L93">receiver state transitions</a> and <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/python/pyspark/daemon.py#L253-L278">daemon reuse decision</a>. <code>TaskContext</code> and accumulator state belong to an attempt; arbitrary user module globals do not. A retry may run on another process or node, so neither globals nor PIDs identify a logical partition.</p>
+<h2 id="trace-add-one-to-each-value-in-split-7">Trace: add one to each value in split 7</h2>
+<p>Suppose <code>rdd.mapPartitions(lambda values: (v + 1 for v in values))</code> receives <code>4, 9</code> in split 7. This is the classic RDD (<code>NON_UDF</code>) socket path, not an Arrow SQL UDF.</p>
+<figure class="source-figure"><a href="../diagrams/components-python-worker-1.svg" title="Open diagram at full size"><img loading="lazy" src="../diagrams/components-python-worker-1.svg" alt="Sequence diagram for components python worker; open to enlarge"></a><figcaption>Sequence diagram · <a href="../diagrams/components-python-worker-1.svg">Open full size</a></figcaption><details><summary>Text equivalent</summary><pre>sequenceDiagram
+    participant J as Executor runner
+    participant W as Worker main
+    participant F as Partition function
+    J-&gt;&gt;W: Init frame with split, context, and pickled command
+    W--&gt;&gt;J: Init response, empty object on success
+    J-&gt;&gt;W: Serialized partition input and finish markers
+    W-&gt;&gt;F: Call with deserialized input iterator
+    F--&gt;&gt;W: Yield 5, then 10
+    W--&gt;&gt;J: Serialized output, then metrics and accumulator section
+    W-&gt;&gt;W: Verify the input finish marker
+    W--&gt;&gt;J: END_OF_STREAM if ready for reuse</pre></details></figure>
+<ol>
+<li><code>main</code> wraps the socket in a <code>SparkSocketMessageReceiver</code>. <code>invoke_udf</code> decodes the length-delimited init frame, checks <strong>major.minor</strong> Python compatibility, applies the configured memory limit where supported, installs the task context, and resets spill and accumulator state. SparkFiles paths are added to the import path; broadcast changes add or remove IDs instead of discarding every cached broadcast. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/python/pyspark/worker.py#L104-L175">Initialization</a>, <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/python/pyspark/worker_util.py#L122-L174">version check</a>, <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/python/pyspark/worker_util.py#L196-L288">files and broadcasts</a>.</li>
+<li>For <code>NON_UDF</code>, <code>read_command</code> reconstructs <code>(func, profiler, deserializer, serializer)</code>. For SQL UDFs/UDTFs the eval type instead selects a handler and its serializer; the RDD wire format is not universal. Only after those steps succeed does the worker send the successful <code>START_OF_INIT_RESPONSE</code>. It precedes any result; the JVM need not wait for it before feeding input. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/python/pyspark/worker.py#L164-L239">Dispatch</a>.</li>
+<li><code>deserializer.load_stream</code> yields the input iterator. The worker calls the prepared <code>func(split_index, iterator)</code> and streams the returned iterator through <code>serializer.dump_stream</code>; <code>5, 10</code> are logical values, not necessarily two wire frames. A closable result iterator is closed even if serialization fails. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/python/pyspark/worker.py#L241-L290">Processing</a>.</li>
+<li>On normal completion it clears <code>TaskContext</code> and <code>BarrierTaskContext</code>, reports metrics, writes <code>END_OF_DATA_SECTION</code>, and sends accumulator updates. Only after reading the JVM&#39;s expected finish signal does it reply <code>END_OF_STREAM</code>. A wrong/unread marker means the streams are not aligned: it signals <strong>do not reuse</strong> and exits instead of interpreting leftover bytes as the next task. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/python/pyspark/worker.py#L290-L341">Cleanup and reply</a>.</li>
+</ol>
+<h2 id="if-an-attempt-fails">If an attempt fails</h2>
+<table>
+<thead>
+<tr>
+<th>First observable boundary</th>
+<th>Interpretation</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Init response contains <code>error</code></td>
+<td>No output follows. Compare driver and executor Python versions for <code>PYTHON_VERSION_MISMATCH</code>; for missing modules, check the executor&#39;s deployed dependencies. <code>isPayloadError</code> distinguishes command-loading failures from worker setup, not all possible causes of import errors.</td>
+</tr>
+<tr>
+<td><code>PYTHON_EXCEPTION_THROWN</code> after successful init</td>
+<td>Decoding input, executing the function, or encoding its output failed. Look at the Python traceback for the failing line and correlate the JVM&#39;s task attempt, not just a possibly reused PID.</td>
+</tr>
+<tr>
+<td>Unexpected EOF, no Python traceback</td>
+<td>Not a normal empty result. Check executor stderr and YARN container diagnostics for process loss; <code>spark.python.worker.faulthandler.enabled</code> can provide a traceback for some crashes. A killed container need not send any failure frame.</td>
+</tr>
+</tbody></table>
+<p>The <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/python/pyspark/worker.py#L290-L341">worker exception boundary</a> and the <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/api/python/PythonRunner.scala#L1291-L1319">JVM-side exception handling</a> explain why these symptoms are different.</p>
+</main></html>

@@ -1,0 +1,109 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1054.5282499999998 1506.118" width="1054.5282499999998" height="1506.118" style="--bg:#101d2e;--fg:#ecf3f8;--line:#839ab5;--accent:#93e3d1;background:var(--bg)">
+<style>
+  text { font-family: 'system-ui', system-ui, sans-serif; }
+  svg {
+    /* Derived from --bg and --fg (overridable via --line, --accent, etc.) */
+    --_text:          var(--fg);
+    --_text-sec:      var(--muted, color-mix(in srgb, var(--fg) 60%, var(--bg)));
+    --_text-muted:    var(--muted, color-mix(in srgb, var(--fg) 40%, var(--bg)));
+    --_text-faint:    color-mix(in srgb, var(--fg) 25%, var(--bg));
+    --_line:          var(--line, color-mix(in srgb, var(--fg) 50%, var(--bg)));
+    --_arrow:         var(--accent, color-mix(in srgb, var(--fg) 85%, var(--bg)));
+    --_node-fill:     var(--surface, color-mix(in srgb, var(--fg) 3%, var(--bg)));
+    --_node-stroke:   var(--border, color-mix(in srgb, var(--fg) 20%, var(--bg)));
+    --_group-fill:    var(--bg);
+    --_group-hdr:     color-mix(in srgb, var(--fg) 5%, var(--bg));
+    --_inner-stroke:  color-mix(in srgb, var(--fg) 12%, var(--bg));
+    --_key-badge:     color-mix(in srgb, var(--fg) 10%, var(--bg));
+  }
+</style>
+<defs>
+  <marker id="arrowhead" markerWidth="8" markerHeight="5" refX="7" refY="2.5" orient="auto">
+    <polygon points="0 0, 8 2.5, 0 5" fill="var(--_arrow)" stroke="var(--_arrow)" stroke-width="0.75" stroke-linejoin="round" />
+  </marker>
+  <marker id="arrowhead-start" markerWidth="8" markerHeight="5" refX="1" refY="2.5" orient="auto-start-reverse">
+    <polygon points="8 0, 0 2.5, 8 5" fill="var(--_arrow)" stroke="var(--_arrow)" stroke-width="0.75" stroke-linejoin="round" />
+  </marker>
+</defs>
+<polyline class="edge" data-from="A" data-to="B" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="347.962,76.9 347.962,124.9" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="B" data-to="C" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="No" points="315.3578333333333,287.9208333333333 315.3578333333333,1025.9179999999997 184.3515,1025.9179999999997 184.3515,1106.2179999999996" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="B" data-to="D" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="Yes" points="380.5661666666666,287.92083333333335 380.5661666666666,332.525 511.57249999999993,332.525 511.57249999999993,412.825" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="D" data-to="E" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="Yes" points="459.9493333333333,670.9408333333332 459.9493333333333,1110.8179999999998 373.897,1110.8179999999998 373.89699999999993,1191.1179999999997" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="D" data-to="F" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="No" points="563.1956666666666,670.9408333333332 563.1956666666666,758.5639999999999 649.2479999999999,758.5639999999999 649.2479999999999,838.8639999999998" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="F" data-to="G" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="Yes" points="595.7723333333332,1106.2423333333331 595.7723333333332,1195.7179999999998 524.7972499999998,1195.7179999999998 524.7972499999998,1276.0179999999998" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="F" data-to="H" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="No" points="702.7236666666665,1106.2423333333334 702.7236666666665,1195.7179999999998 773.6987499999999,1195.7179999999998 773.6987499999999,1276.0179999999998" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="H" data-to="I" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="Stored" points="730.8920833333332,1312.918 730.8920833333332,1348.918 642.39375,1348.918 642.39375,1429.2179999999998" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="H" data-to="J" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="No room and no disk fallback" points="816.5054166666665,1312.918 816.5054166666665,1348.918 905.0037499999999,1348.918 905.00375,1429.2179999999998" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<g class="edge-label" data-from="B" data-to="C" data-label="No">
+  <rect x="168.8515" y="1032.9179999999997" width="30.718000000000004" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1" />
+  <text x="184.2105" y="1048.0679999999998" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">No</text>
+</g>
+<g class="edge-label" data-from="B" data-to="D" data-label="Yes">
+  <rect x="493.07249999999993" y="339.525" width="36.658" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1" />
+  <text x="511.40149999999994" y="354.67499999999995" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">Yes</text>
+</g>
+<g class="edge-label" data-from="D" data-to="E" data-label="Yes">
+  <rect x="355.397" y="1117.8179999999998" width="36.658" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1" />
+  <text x="373.726" y="1132.9679999999998" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">Yes</text>
+</g>
+<g class="edge-label" data-from="D" data-to="F" data-label="No">
+  <rect x="633.7479999999999" y="765.5639999999999" width="30.718000000000004" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1" />
+  <text x="649.107" y="780.7139999999998" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">No</text>
+</g>
+<g class="edge-label" data-from="F" data-to="G" data-label="Yes">
+  <rect x="506.2972499999999" y="1202.7179999999998" width="36.658" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1" />
+  <text x="524.6262499999999" y="1217.868" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">Yes</text>
+</g>
+<g class="edge-label" data-from="F" data-to="H" data-label="No">
+  <rect x="758.1987499999999" y="1202.7179999999998" width="30.718000000000004" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1" />
+  <text x="773.5577499999999" y="1217.868" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">No</text>
+</g>
+<g class="edge-label" data-from="H" data-to="I" data-label="Stored">
+  <rect x="617.39375" y="1355.918" width="49.726000000000006" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1" />
+  <text x="642.25675" y="1371.068" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">Stored</text>
+</g>
+<g class="edge-label" data-from="H" data-to="J" data-label="No room and no disk fallback">
+  <rect x="829.5037499999999" y="1355.918" width="150.112" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1" />
+  <text x="904.5597499999999" y="1371.068" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">No room and no disk fallback</text>
+</g>
+<g class="node" data-id="A" data-label="Task asks for partition 3" data-shape="rectangle">
+  <rect x="256.592" y="40" width="182.74" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="347.962" y="58.45" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">Task asks for partition 3</text>
+</g>
+<g class="node" data-id="B" data-label="Persistence enabled?" data-shape="diamond">
+  <polygon points="347.962,124.89999999999999 445.7745,222.71249999999998 347.962,320.525 250.1495,222.71249999999998" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="347.962" y="222.71249999999998" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">Persistence enabled?</text>
+</g>
+<g class="node" data-id="C" data-label="Compute or read a materialized checkpoint" data-shape="rectangle">
+  <rect x="40" y="1106.2179999999996" width="288.703" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="184.3515" y="1124.6679999999997" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">Compute or read a materialized checkpoint</text>
+</g>
+<g class="node" data-id="D" data-label="Visible copy readable locally or remotely?" data-shape="diamond">
+  <polygon points="511.57249999999993,412.825 666.4419999999999,567.6945 511.57249999999993,722.5639999999999 356.703,567.6945" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="511.57249999999993" y="567.6945" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">Visible copy readable locally or remotely?</text>
+</g>
+<g class="node" data-id="E" data-label="Return cached iterator" data-shape="rectangle">
+  <rect x="286.97299999999996" y="1191.1179999999997" width="173.84799999999998" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="373.89699999999993" y="1209.5679999999998" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">Return cached iterator</text>
+</g>
+<g class="node" data-id="F" data-label="Another writer already stored it in this JVM?" data-shape="diamond">
+  <polygon points="649.2479999999999,838.8639999999998 809.675,999.2909999999998 649.2479999999999,1159.7179999999998 488.8209999999999,999.2909999999998" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="649.2479999999999" y="999.2909999999998" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">Another writer already stored it in this JVM?</text>
+</g>
+<g class="node" data-id="G" data-label="Read winning local block" data-shape="rectangle">
+  <rect x="432.31574999999987" y="1276.0179999999998" width="184.96300000000002" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="524.7972499999998" y="1294.4679999999998" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">Read winning local block</text>
+</g>
+<g class="node" data-id="H" data-label="Compute partition and attempt storage" data-shape="rectangle">
+  <rect x="645.27875" y="1276.0179999999998" width="256.84" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="773.6987499999999" y="1294.4679999999998" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">Compute partition and attempt storage</text>
+</g>
+<g class="node" data-id="I" data-label="Report status and read stored block" data-shape="rectangle">
+  <rect x="517.3082499999998" y="1429.2179999999998" width="250.17100000000002" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="642.3937499999998" y="1447.668" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">Report status and read stored block</text>
+</g>
+<g class="node" data-id="J" data-label="Return iterator without caching" data-shape="rectangle">
+  <rect x="795.4792499999999" y="1429.2179999999998" width="219.049" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="905.0037499999999" y="1447.668" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">Return iterator without caching</text>
+</g>
+</svg>

@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="360" height="465" viewBox="0 0 360 465" role="img" aria-labelledby="flow-title" aria-describedby="flow-desc">
+<title id="flow-title">ExecutorMonitor: deciding which idle executors are candidates: Flow at a glance</title>
+<desc id="flow-desc">1. Idle start: The monitor records when an executor&apos;s last running task ends. 2. Stored data: Cached blocks or shuffle data can extend the idle deadline; an active tracked shuffle keeps the executor ineligible. 3. Candidate list: Once the deadline expires, the monitor can return the executor&apos;s ID and resource profile to the manager.</desc>
+<style>
+@keyframes handoff {
+  0%, 18% { transform: translateY(0); }
+  40%, 58% { transform: translateY(121px); }
+  82%, 100% { transform: translateY(288px); }
+}
+@media (prefers-reduced-motion: no-preference) {
+  #focus { display: inline; animation: handoff 4.6s ease-in-out 1 both; }
+}
+@media (prefers-reduced-motion: reduce) { #focus { display: none; animation: none; } }
+</style>
+<rect x="1" y="1" width="358" height="463" rx="13" fill="#f2f7f6" stroke="#b8cbc8"/>
+<path d="M24 30 V318" fill="none" stroke="#577d7b" stroke-width="2"/>
+<g font-family="Arial, Helvetica, sans-serif">
+  <rect x="48" y="10" width="302" height="111" rx="9" fill="#fff" stroke="#a8bdbb"/>
+  <circle cx="24" cy="30" r="12" fill="#184d50"/>
+  <text x="24" y="36" text-anchor="middle" font-size="17" font-weight="700" fill="#fff">1</text>
+  <text font-size="19" font-weight="700" fill="#12383d"><tspan x="62" y="36">Idle start</tspan></text>
+  <text font-size="18" fill="#223a40"><tspan x="62" y="61">The monitor records when</tspan><tspan x="62" y="84">an executor&apos;s last running</tspan><tspan x="62" y="107">task ends.</tspan></text>
+  <rect x="48" y="131" width="302" height="157" rx="9" fill="#fff" stroke="#a8bdbb"/>
+  <circle cx="24" cy="151" r="12" fill="#184d50"/>
+  <text x="24" y="157" text-anchor="middle" font-size="17" font-weight="700" fill="#fff">2</text>
+  <text font-size="19" font-weight="700" fill="#12383d"><tspan x="62" y="157">Stored data</tspan></text>
+  <text font-size="18" fill="#223a40"><tspan x="62" y="182">Cached blocks or shuffle</tspan><tspan x="62" y="205">data can extend the idle</tspan><tspan x="62" y="228">deadline; an active</tspan><tspan x="62" y="251">tracked shuffle keeps the</tspan><tspan x="62" y="274">executor ineligible.</tspan></text>
+  <rect x="48" y="298" width="302" height="157" rx="9" fill="#fff" stroke="#a8bdbb"/>
+  <circle cx="24" cy="318" r="12" fill="#184d50"/>
+  <text x="24" y="324" text-anchor="middle" font-size="17" font-weight="700" fill="#fff">3</text>
+  <text font-size="19" font-weight="700" fill="#12383d"><tspan x="62" y="324">Candidate list</tspan></text>
+  <text font-size="18" fill="#223a40"><tspan x="62" y="349">Once the deadline expires,</tspan><tspan x="62" y="372">the monitor can return the</tspan><tspan x="62" y="395">executor&apos;s ID and</tspan><tspan x="62" y="418">resource profile to the</tspan><tspan x="62" y="441">manager.</tspan></text>
+</g>
+<g id="focus" display="none" aria-hidden="true">
+  <circle cx="24" cy="30" r="16" fill="none" stroke="#17484d" stroke-width="2"/>
+  <path d="M40 25 l6 5 -6 5 z" fill="#17484d"/>
+</g>
+</svg>

@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="360" height="419" viewBox="0 0 360 419" role="img" aria-labelledby="flow-title" aria-describedby="flow-desc">
+<title id="flow-title">LiveListenerBus: from scheduler events to listener callbacks: Flow at a glance</title>
+<desc id="flow-desc">1. DAG scheduler: While handling a task completion, the scheduler posts a task-end event. 2. Listener bus: The bus offers the event to each active queue without waiting for its listeners. 3. Queue threads: Each queue delivers accepted events in order, calling its listeners one at a time.</desc>
+<style>
+@keyframes handoff {
+  0%, 18% { transform: translateY(0); }
+  40%, 58% { transform: translateY(121px); }
+  82%, 100% { transform: translateY(265px); }
+}
+@media (prefers-reduced-motion: no-preference) {
+  #focus { display: inline; animation: handoff 4.6s ease-in-out 1 both; }
+}
+@media (prefers-reduced-motion: reduce) { #focus { display: none; animation: none; } }
+</style>
+<rect x="1" y="1" width="358" height="417" rx="13" fill="#f2f7f6" stroke="#b8cbc8"/>
+<path d="M24 30 V295" fill="none" stroke="#577d7b" stroke-width="2"/>
+<g font-family="Arial, Helvetica, sans-serif">
+  <rect x="48" y="10" width="302" height="111" rx="9" fill="#fff" stroke="#a8bdbb"/>
+  <circle cx="24" cy="30" r="12" fill="#184d50"/>
+  <text x="24" y="36" text-anchor="middle" font-size="17" font-weight="700" fill="#fff">1</text>
+  <text font-size="19" font-weight="700" fill="#12383d"><tspan x="62" y="36">DAG scheduler</tspan></text>
+  <text font-size="18" fill="#223a40"><tspan x="62" y="61">While handling a task</tspan><tspan x="62" y="84">completion, the scheduler</tspan><tspan x="62" y="107">posts a task-end event.</tspan></text>
+  <rect x="48" y="131" width="302" height="134" rx="9" fill="#fff" stroke="#a8bdbb"/>
+  <circle cx="24" cy="151" r="12" fill="#184d50"/>
+  <text x="24" y="157" text-anchor="middle" font-size="17" font-weight="700" fill="#fff">2</text>
+  <text font-size="19" font-weight="700" fill="#12383d"><tspan x="62" y="157">Listener bus</tspan></text>
+  <text font-size="18" fill="#223a40"><tspan x="62" y="182">The bus offers the event</tspan><tspan x="62" y="205">to each active queue</tspan><tspan x="62" y="228">without waiting for its</tspan><tspan x="62" y="251">listeners.</tspan></text>
+  <rect x="48" y="275" width="302" height="134" rx="9" fill="#fff" stroke="#a8bdbb"/>
+  <circle cx="24" cy="295" r="12" fill="#184d50"/>
+  <text x="24" y="301" text-anchor="middle" font-size="17" font-weight="700" fill="#fff">3</text>
+  <text font-size="19" font-weight="700" fill="#12383d"><tspan x="62" y="301">Queue threads</tspan></text>
+  <text font-size="18" fill="#223a40"><tspan x="62" y="326">Each queue delivers</tspan><tspan x="62" y="349">accepted events in order,</tspan><tspan x="62" y="372">calling its listeners one at</tspan><tspan x="62" y="395">a time.</tspan></text>
+</g>
+<g id="focus" display="none" aria-hidden="true">
+  <circle cx="24" cy="30" r="16" fill="none" stroke="#17484d" stroke-width="2"/>
+  <path d="M40 25 l6 5 -6 5 z" fill="#17484d"/>
+</g>
+</svg>

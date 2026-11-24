@@ -1,0 +1,108 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 769.3999999999999 780" width="769.3999999999999" height="780" style="--bg:#101d2e;--fg:#ecf3f8;--line:#839ab5;--accent:#93e3d1;background:var(--bg)">
+<style>
+  text { font-family: 'system-ui', system-ui, sans-serif; }
+  svg {
+    /* Derived from --bg and --fg (overridable via --line, --accent, etc.) */
+    --_text:          var(--fg);
+    --_text-sec:      var(--muted, color-mix(in srgb, var(--fg) 60%, var(--bg)));
+    --_text-muted:    var(--muted, color-mix(in srgb, var(--fg) 40%, var(--bg)));
+    --_text-faint:    color-mix(in srgb, var(--fg) 25%, var(--bg));
+    --_line:          var(--line, color-mix(in srgb, var(--fg) 50%, var(--bg)));
+    --_arrow:         var(--accent, color-mix(in srgb, var(--fg) 85%, var(--bg)));
+    --_node-fill:     var(--surface, color-mix(in srgb, var(--fg) 3%, var(--bg)));
+    --_node-stroke:   var(--border, color-mix(in srgb, var(--fg) 20%, var(--bg)));
+    --_group-fill:    var(--bg);
+    --_group-hdr:     color-mix(in srgb, var(--fg) 5%, var(--bg));
+    --_inner-stroke:  color-mix(in srgb, var(--fg) 12%, var(--bg));
+    --_key-badge:     color-mix(in srgb, var(--fg) 10%, var(--bg));
+  }
+</style>
+<defs>
+  <marker id="seq-arrow" markerWidth="8" markerHeight="5" refX="8" refY="2.5" orient="auto-start-reverse">
+    <polygon points="0 0, 8 2.5, 0 5" fill="var(--_arrow)" />
+  </marker>
+  <marker id="seq-arrow-open" markerWidth="8" markerHeight="5" refX="8" refY="2.5" orient="auto-start-reverse">
+    <polyline points="0 0, 8 2.5, 0 5" fill="none" stroke="var(--_arrow)" stroke-width="1" />
+  </marker>
+</defs>
+<line class="lifeline" data-actor="D" x1="148.1215" y1="70" x2="148.1215" y2="750" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" />
+<line class="lifeline" data-actor="A" x1="369.53049999999996" y1="70" x2="369.53049999999996" y2="750" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" />
+<line class="lifeline" data-actor="B" x1="546.1089999999999" y1="70" x2="546.1089999999999" y2="750" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" />
+<line class="lifeline" data-actor="S" x1="699.3999999999999" y1="70" x2="699.3999999999999" y2="750" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" />
+<g class="message" data-from="D" data-to="A" data-label="Launch map task using scheduler RPC" data-line-style="solid" data-arrow-head="filled" data-self="false">
+  <line x1="148.1215" y1="90" x2="369.53049999999996" y2="90" stroke="var(--_line)" stroke-width="1" marker-end="url(#seq-arrow)" />
+  <text x="258.82599999999996" y="80" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">Launch map task using scheduler RPC</text>
+</g>
+<g class="message" data-from="A" data-to="S" data-label="Read assigned input" data-line-style="solid" data-arrow-head="filled" data-self="false">
+  <line x1="369.53049999999996" y1="130" x2="699.3999999999999" y2="130" stroke="var(--_line)" stroke-width="1" marker-end="url(#seq-arrow)" />
+  <text x="534.46525" y="120" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">Read assigned input</text>
+</g>
+<g class="message" data-from="S" data-to="A" data-label="Input bytes" data-line-style="dashed" data-arrow-head="filled" data-self="false">
+  <line x1="699.3999999999999" y1="170" x2="369.53049999999996" y2="170" stroke="var(--_line)" stroke-width="1" stroke-dasharray="6 4" marker-end="url(#seq-arrow)" />
+  <text x="534.46525" y="160" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">Input bytes</text>
+</g>
+<g class="message" data-from="A" data-to="A" data-label="Filter, partially aggregate, partition, write local shuffle files" data-line-style="solid" data-arrow-head="filled" data-self="true">
+  <polyline points="369.53049999999996,210 399.53049999999996,210 399.53049999999996,230 369.53049999999996,230" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#seq-arrow)" />
+  <text x="407.53049999999996" y="220" font-size="11" text-anchor="start" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">Filter, partially aggregate, partition, write local shuffle files</text>
+</g>
+<g class="message" data-from="A" data-to="D" data-label="Task finishes with MapStatus and partition sizes" data-line-style="dashed" data-arrow-head="filled" data-self="false">
+  <line x1="369.53049999999996" y1="280" x2="148.1215" y2="280" stroke="var(--_line)" stroke-width="1" stroke-dasharray="6 4" marker-end="url(#seq-arrow)" />
+  <text x="258.82599999999996" y="270" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">Task finishes with MapStatus and partition sizes</text>
+</g>
+<g class="message" data-from="D" data-to="B" data-label="Launch task for reduce partition 3" data-line-style="solid" data-arrow-head="filled" data-self="false">
+  <line x1="148.1215" y1="320" x2="546.1089999999999" y2="320" stroke="var(--_line)" stroke-width="1" marker-end="url(#seq-arrow)" />
+  <text x="347.11524999999995" y="310" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">Launch task for reduce partition 3</text>
+</g>
+<g class="message" data-from="B" data-to="D" data-label="GetMapOutputStatuses if not already cached" data-line-style="solid" data-arrow-head="filled" data-self="false">
+  <line x1="546.1089999999999" y1="360" x2="148.1215" y2="360" stroke="var(--_line)" stroke-width="1" marker-end="url(#seq-arrow)" />
+  <text x="347.11524999999995" y="350" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">GetMapOutputStatuses if not already cached</text>
+</g>
+<g class="message" data-from="D" data-to="B" data-label="Locations and size metadata" data-line-style="dashed" data-arrow-head="filled" data-self="false">
+  <line x1="148.1215" y1="400" x2="546.1089999999999" y2="400" stroke="var(--_line)" stroke-width="1" stroke-dasharray="6 4" marker-end="url(#seq-arrow)" />
+  <text x="347.11524999999995" y="390" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">Locations and size metadata</text>
+</g>
+<g class="message" data-from="B" data-to="A" data-label="FetchShuffleBlocks at worker-a:42001" data-line-style="solid" data-arrow-head="filled" data-self="false">
+  <line x1="546.1089999999999" y1="440" x2="369.53049999999996" y2="440" stroke="var(--_line)" stroke-width="1" marker-end="url(#seq-arrow)" />
+  <text x="457.81974999999994" y="430" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">FetchShuffleBlocks at worker-a:42001</text>
+</g>
+<g class="message" data-from="A" data-to="B" data-label="Stream handle" data-line-style="dashed" data-arrow-head="filled" data-self="false">
+  <line x1="369.53049999999996" y1="480" x2="546.1089999999999" y2="480" stroke="var(--_line)" stroke-width="1" stroke-dasharray="6 4" marker-end="url(#seq-arrow)" />
+  <text x="457.81974999999994" y="470" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">Stream handle</text>
+</g>
+<g class="message" data-from="B" data-to="A" data-label="Request chunks for the required partition" data-line-style="solid" data-arrow-head="filled" data-self="false">
+  <line x1="546.1089999999999" y1="520" x2="369.53049999999996" y2="520" stroke="var(--_line)" stroke-width="1" marker-end="url(#seq-arrow)" />
+  <text x="457.81974999999994" y="510" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">Request chunks for the required partition</text>
+</g>
+<g class="message" data-from="A" data-to="B" data-label="Shuffle bytes directly to worker-b" data-line-style="dashed" data-arrow-head="filled" data-self="false">
+  <line x1="369.53049999999996" y1="560" x2="546.1089999999999" y2="560" stroke="var(--_line)" stroke-width="1" stroke-dasharray="6 4" marker-end="url(#seq-arrow)" />
+  <text x="457.81974999999994" y="550" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">Shuffle bytes directly to worker-b</text>
+</g>
+<g class="message" data-from="B" data-to="B" data-label="Finish counts by region" data-line-style="solid" data-arrow-head="filled" data-self="true">
+  <polyline points="546.1089999999999,600 576.1089999999999,600 576.1089999999999,620 546.1089999999999,620" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#seq-arrow)" />
+  <text x="584.1089999999999" y="610" font-size="11" text-anchor="start" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">Finish counts by region</text>
+</g>
+<g class="message" data-from="B" data-to="S" data-label="Write output partition" data-line-style="solid" data-arrow-head="filled" data-self="false">
+  <line x1="546.1089999999999" y1="670" x2="699.3999999999999" y2="670" stroke="var(--_line)" stroke-width="1" marker-end="url(#seq-arrow)" />
+  <text x="622.7544999999999" y="660" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">Write output partition</text>
+</g>
+<g class="message" data-from="B" data-to="D" data-label="Report task completion and commit information" data-line-style="dashed" data-arrow-head="filled" data-self="false">
+  <line x1="546.1089999999999" y1="710" x2="148.1215" y2="710" stroke="var(--_line)" stroke-width="1" stroke-dasharray="6 4" marker-end="url(#seq-arrow)" />
+  <text x="347.11524999999995" y="700" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">Report task completion and commit information</text>
+</g>
+<g class="actor" data-id="D" data-label="Driver / MapOutputTrackerMaster" data-type="participant">
+  <rect x="30" y="30" width="236.243" height="40" rx="4" ry="4" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <text x="148.1215" y="50" font-size="13" text-anchor="middle" font-weight="500" fill="var(--_text)" dy="4.55">Driver / MapOutputTrackerMaster</text>
+</g>
+<g class="actor" data-id="A" data-label="Map executor A" data-type="participant">
+  <rect x="306.24299999999994" y="30" width="126.57500000000002" height="40" rx="4" ry="4" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <text x="369.53049999999996" y="50" font-size="13" text-anchor="middle" font-weight="500" fill="var(--_text)" dy="4.55">Map executor A</text>
+</g>
+<g class="actor" data-id="B" data-label="Reduce executor B" data-type="participant">
+  <rect x="472.8179999999999" y="30" width="146.582" height="40" rx="4" ry="4" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <text x="546.1089999999999" y="50" font-size="13" text-anchor="middle" font-weight="500" fill="var(--_text)" dy="4.55">Reduce executor B</text>
+</g>
+<g class="actor" data-id="S" data-label="HDFS" data-type="participant">
+  <rect x="659.3999999999999" y="30" width="80" height="40" rx="4" ry="4" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <text x="699.3999999999999" y="50" font-size="13" text-anchor="middle" font-weight="500" fill="var(--_text)" dy="4.55">HDFS</text>
+</g>
+</svg>

@@ -1,0 +1,61 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>MapOutputTrackerWorker: the executor's shuffle lookup cache · Troubleshoot Spark</title><link rel="stylesheet" href="../style.css"><main class="reader"><nav><a href=".././#map">Diagnostic map</a> · <a href="../guide.html">Lifecycle</a> · <a href="../scenarios.html">Cases</a> · <a href="../components/index.html">Components</a></nav><h1 id="mapoutputtrackerworker-the-executor39s-shuffle-lookup-cache">MapOutputTrackerWorker: the executor&#39;s shuffle lookup cache</h1>
+<p><a href="index.html">component index</a> | <a href="map-output-tracker-master.html">Driver-side tracker</a> | <a href="shuffle-reader.html">Shuffle reader</a></p>
+<p>Before an executor fetches any shuffle bytes, it needs a list of blocks and serving addresses. <code>MapOutputTrackerWorker</code> turns a shuffle ID and partition ranges into that list. It is one JVM object shared by tasks on a YARN executor, not a Python worker, a YARN service, or a thread that copies files.</p>
+<h2 id="flow-at-a-glance">Flow at a glance</h2>
+<ol>
+<li><strong>Shuffle manager</strong>: Asks which blocks contain data for reduce partition 2 of shuffle 7.</li>
+<li><strong>Executor tracker</strong>: Reuses cached map statuses or asks the driver for them.</li>
+<li><strong>Shuffle reader</strong>: Receives nonempty block IDs grouped by serving address.</li>
+</ol>
+<blockquote>
+<p><strong>Watch for:</strong> A zero size means the block is empty and can be skipped. A missing map status means the location is unknown and the lookup fails.</p>
+</blockquote>
+<details>
+<summary>Show the animated flow</summary>
+
+<p><img src="visuals/map-output-tracker-worker.svg" alt="Executor tracker checks its cache and uses map statuses to list the blocks and addresses for reducer 2"></p>
+</details>
+
+<h2 id="input-and-output">Input and output</h2>
+<table>
+<thead>
+<tr>
+<th>Input to <code>getMapSizesByExecutorId</code></th>
+<th>How the worker uses it</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>shuffleId</code></td>
+<td>Key in the executor&#39;s <code>mapStatuses</code> cache and argument to the driver&#39;s <code>GetMapOutputStatuses</code> RPC on a miss.</td>
+</tr>
+<tr>
+<td><code>[startMapIndex, endMapIndex)</code></td>
+<td>Slice of <strong>logical input partitions</strong> in the status array. <code>Int.MaxValue</code> as the end means all remaining entries.</td>
+</tr>
+<tr>
+<td><code>[startPartition, endPartition)</code></td>
+<td>Range of <strong>reduce partition IDs</strong> to read within each selected map output. A task reading reducer 2 alone passes <code>[2, 3)</code>.</td>
+</tr>
+</tbody></table>
+<p>The result is an iterator grouped by <code>BlockManagerId</code>. Each group contains <code>(ShuffleBlockId(shuffleId, status.mapId, reduceId), estimatedBytes, mapIndex)</code> tuples. For example, if entry <strong>3</strong> of shuffle <strong>7</strong> describes attempt <strong>41</strong> on executor A, the tuple for reduce <strong>2</strong> names <code>shuffle_7_41_2</code> but still carries <code>3</code>. The name lets the server find attempt 41&#39;s files; the separate index lets the scheduler identify the input partition on failure. No byte offsets, streams, or file contents are in this result. See the <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/MapOutputTracker.scala#L1951-L1966">range conversion and zero-size filter</a> and the <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/shuffle/sort/SortShuffleManager.scala#L120-L142">reader call site</a>.</p>
+<h2 id="cache-miss-versus-cache-hit">Cache miss versus cache hit</h2>
+<figure class="source-figure"><a href="../diagrams/components-map-output-tracker-worker-1.svg" title="Open diagram at full size"><img loading="lazy" src="../diagrams/components-map-output-tracker-worker-1.svg" alt="Sequence diagram for components map output tracker worker; open to enlarge"></a><figcaption>Sequence diagram · <a href="../diagrams/components-map-output-tracker-worker-1.svg">Open full size</a></figcaption><details><summary>Text equivalent</summary><pre>sequenceDiagram
+    participant R as SortShuffleManager on reducer
+    participant W as Executor tracker worker
+    participant D as Driver tracker endpoint
+    R-&gt;&gt;W: getMapSizesByExecutorId with map and reduce ranges
+    alt Status array absent
+        W-&gt;&gt;W: Lock by shuffle ID and check cache again
+        W-&gt;&gt;D: GetMapOutputStatuses(shuffleId)
+        D--&gt;&gt;W: Status snapshot or broadcast reference
+        W-&gt;&gt;W: Deserialize and cache full map status array
+    else Status array present
+        Note over W: No driver RPC for this lookup
+    end
+    W--&gt;&gt;R: Nonempty blocks grouped by serving address</pre></details></figure>
+<p>The executor&#39;s <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/SparkEnv.scala#L736-L759"><code>SparkEnv</code> constructs the worker</a> and resolves a reference to the <strong>driver&#39;s</strong> endpoint; it does not register a second master endpoint. On the ordinary pull path the <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/MapOutputTracker.scala#L1483-L1542">lookup</a> asks for map statuses only. The <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/MapOutputTracker.scala#L1667-L1698">cache-miss branch</a> uses a per-shuffle <code>KeyLock</code> and rechecks the cache inside the lock: concurrent successful misses for the same shuffle need only one fetch. The <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/MapOutputTracker.scala#L1789-L1827">wire decoder</a> either decompresses the inline array or resolves the broadcast and decodes its contents. This is still a metadata transfer. Tasks on another executor have their own cache.</p>
+<p>For each requested map slot, the worker validates the status, then tests the estimated size for each requested reducer. <strong>Zero size</strong> means a known empty block and is skipped; a <strong>null slot</strong> is an unknown map location and fails the lookup. It does not synthesize an empty partition. <code>SortShuffleManager</code> hands the grouped result to <code>BlockStoreShuffleReader</code>, whose fetcher chooses local disk, another executor, or an optional external shuffle service.</p>
+<h2 id="invalidation-failure-and-lifetime">Invalidation, failure, and lifetime</h2>
+<p>The driver <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/TaskSetManager.scala#L233-L238">stamps the current epoch on each task in a task set</a>. Before running it, the executor <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/executor/Executor.scala#L883-L890">calls <code>updateEpoch(task.epoch)</code></a>. A <strong>higher</strong> epoch <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/MapOutputTracker.scala#L1702-L1725">clears the worker&#39;s caches across shuffles</a>; an equal or older epoch leaves them alone. There is no periodic poll and no driver push of replacement locations. A <code>RemoveShuffle</code> message <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/storage/BlockManagerStorageEndpoint.scala#L58-L70">evicts just that shuffle</a>. At executor shutdown <code>SparkEnv</code> <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/SparkEnv.scala#L283-L305">calls <code>stop</code></a>; the worker inherits the <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/MapOutputTracker.scala#L784-L789">no-op base implementation</a>. Its state dies with the executor rather than stopping the driver&#39;s endpoint.</p>
+<p><strong>Diagnostic:</strong> <code>Don&#39;t have map outputs for shuffle ...</code> followed by <code>Got the map output locations</code> is a normal cold lookup. A <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/MapOutputTracker.scala#L2003-L2010">null status</a> throws <code>MetadataFetchFailedException</code>; the conversion handler clears cached statuses and rethrows. The resulting <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/shuffle/FetchFailedException.scala#L58-L72">fetch-failed reason</a> has no block-manager address and uses <code>-1</code> for both map identifiers. The reported partition on this path is the <strong>first requested reduce ID</strong>, not the missing map index. Look for lost map outputs on the driver. In contrast, <code>Error communicating with MapOutputTracker</code> comes from the <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/MapOutputTracker.scala#L656-L668">RPC ask</a>; start with driver endpoint reachability rather than a producer&#39;s <code>.data</code> file.</p>
+</main></html>

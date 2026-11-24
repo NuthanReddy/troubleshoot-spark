@@ -1,0 +1,84 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>PythonWorkerFactory: obtaining an executor-local interpreter · Troubleshoot Spark</title><link rel="stylesheet" href="../style.css"><main class="reader"><nav><a href=".././#map">Diagnostic map</a> · <a href="../guide.html">Lifecycle</a> · <a href="../scenarios.html">Cases</a> · <a href="../components/index.html">Components</a></nav><h1 id="pythonworkerfactory-obtaining-an-executor-local-interpreter">PythonWorkerFactory: obtaining an executor-local interpreter</h1>
+<p><a href="index.html">component index</a></p>
+<p><code>PythonWorkerFactory</code> answers a question for an executor task: <strong>which local Python process and socket can this invocation use?</strong> It does not know the function or send partition records. That is the <a href="python-runner.html">executor-side runner&#39;s</a> job. On YARN the factory lives in the executor JVM; its daemon and <a href="python-worker.html">workers</a> are processes in that executor&#39;s container, not new YARN allocations. It never lends out the Python driver that runs the submitted script.</p>
+<h2 id="flow-at-a-glance">Flow at a glance</h2>
+<ol>
+<li><strong>Executor runner</strong>: The runner requests a local worker for the task&#39;s Python environment.</li>
+<li><strong>Worker factory</strong>: If no worker is idle, the factory connects to its local Unix daemon.</li>
+<li><strong>Socket handoff</strong>: The daemon forks a child; the factory gives the runner that child&#39;s socket.</li>
+</ol>
+<blockquote>
+<p><strong>Key distinction:</strong> The factory supplies the connection; the runner sends the function and the worker executes it.</p>
+</blockquote>
+<details>
+<summary>Show the animated flow</summary>
+
+<p><img src="visuals/python-worker-factory.svg" alt="The executor runner requests a worker and receives a socket connected to a new daemon child"></p>
+</details>
+
+<h2 id="ownership-and-interface">Ownership and interface</h2>
+<table>
+<thead>
+<tr>
+<th>Boundary</th>
+<th>What crosses it</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Runner to <code>SparkEnv</code></td>
+<td>Python executable, worker module, daemon module, effective environment, and daemon-mode request. <code>SparkEnv</code> caches factories by the first four; a conflicting daemon-mode request for the same key is an error.</td>
+</tr>
+<tr>
+<td>Factory to runner</td>
+<td>A <code>PythonWorker</code> (a JVM wrapper for the connected <code>SocketChannel</code> and selector), plus an optional <code>PythonWorkerHandle</code> for liveness, termination, and diagnostics. The wrapper is not the interpreter.</td>
+</tr>
+<tr>
+<td>Task completion to factory</td>
+<td>Release an eligible worker for reuse, or destroy a worker that must stop. A factory can outlive many attempts; <code>SparkEnv.stop()</code> stops its cached factories. No pool is shared between executors.</td>
+</tr>
+</tbody></table>
+<p>The <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/SparkEnv.scala#L328-L345">factory lookup</a> is lazy. Each factory keeps its daemon process and listening address, a worker-to-handle map, a FIFO idle queue, and a separate map of directly launched processes. The <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/api/python/PythonWorkerFactory.scala#L40-L150">socket wrapper and factory state</a> distinguish an idle, connected child from a daemon that can fork another child.</p>
+<h2 id="trace-partition-7-needs-python-partition-8-arrives-later">Trace: partition 7 needs Python; partition 8 arrives later</h2>
+<figure class="source-figure"><a href="../diagrams/components-python-worker-factory-1.svg" title="Open diagram at full size"><img loading="lazy" src="../diagrams/components-python-worker-factory-1.svg" alt="Sequence diagram for components python worker factory; open to enlarge"></a><figcaption>Sequence diagram · <a href="../diagrams/components-python-worker-factory-1.svg">Open full size</a></figcaption><details><summary>Text equivalent</summary><pre>sequenceDiagram
+    participant R as Executor runner
+    participant F as Local factory
+    participant D as Python daemon
+    participant W as Python worker
+    R-&gt;&gt;F: Acquire for partition 7
+    F-&gt;&gt;D: Start if absent, then connect to advertised address
+    D-&gt;&gt;W: Fork child with accepted socket
+    W--&gt;&gt;F: Report child PID, then complete TCP handshake
+    F--&gt;&gt;R: Connected worker and handle
+    R-&gt;&gt;W: Run partition 7 over the socket
+    W--&gt;&gt;R: Results and clean end-of-stream reply
+    R-&gt;&gt;F: Release if reuse is enabled
+    R-&gt;&gt;F: Acquire for partition 8 with the same key
+    F--&gt;&gt;R: Return live idle child, or create another</pre></details></figure>
+<ol>
+<li>On the Unix daemon path, <code>create()</code> first dequeues idle workers. A live handle and refreshed, non-blocking channel can be handed back immediately. It discards unusable entries. With no match, it lazily starts <code>pythonExec -m pyspark.daemon pyspark.worker</code> (default modules). The daemon advertises an ephemeral loopback port or configured Unix-domain socket path on stdout. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/api/python/PythonWorkerFactory.scala#L152-L180">Checkout</a> and <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/api/python/PythonWorkerFactory.scala#L338-L414">daemon startup</a>.</li>
+<li>The JVM connects; the daemon accepts and forks. The child reports its PID on the accepted socket. For TCP the JVM authenticates to the child; the Unix-domain mode skips the TCP secret exchange. The JVM gives <strong>that connection</strong>, not the daemon&#39;s stdin/stdout, to the runner. Concurrent invocations cannot borrow the same checked-out worker. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/api/python/PythonWorkerFactory.scala#L188-L248">Connection and retry</a>; <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/python/pyspark/daemon.py#L211-L278">child loop</a>.</li>
+<li><code>spark.python.use.daemon</code> and <code>spark.python.worker.reuse</code> are separate switches. With a daemon but no reuse, later tasks can use the same daemon but not the finished child. With reuse, a clean protocol reply lets the runner release the child. A configured <code>spark.python.factory.idleWorkerMaxPoolSize</code> evicts the oldest idle worker on release; the monitor also drains a pool after inactivity. The idle cap is <strong>not</strong> a cap on concurrently running tasks. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/internal/config/Python.scala#L24-L39">Defaults</a>, <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/internal/config/Python.scala#L155-L164">pool cap</a>, <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/api/python/PythonWorkerFactory.scala#L463-L571">cleanup and release</a>.</li>
+<li>Without a daemon (including Windows), the direction reverses: the JVM <strong>listens</strong>, launches <code>pythonExec -m workerModule</code>, and accepts the child&#39;s connection and PID. Release closes this worker&#39;s channel instead of queuing it. There is no promise of the same PID on a later task. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/api/python/PythonWorkerFactory.scala#L254-L336">Direct launch</a>.</li>
+</ol>
+<h2 id="if-acquisition-fails">If acquisition fails</h2>
+<table>
+<thead>
+<tr>
+<th>Executor-container clue</th>
+<th>What to check first</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>Bad data in ... standard output</code> during daemon startup</td>
+<td>The first stdout bytes are the port or socket path. Inspect daemon stderr and the executor&#39;s Python path; even a <code>sitecustomize.py</code> print can corrupt this handshake. The task function has not run.</td>
+</tr>
+<tr>
+<td><code>Python worker failed to connect back</code></td>
+<td>This is the direct-launch accept/authentication/PID path. Check the nested cause and child stderr; verify the executable and modules in the executor environment, not just on the submit host.</td>
+</tr>
+<tr>
+<td>Dead idle worker discarded, or daemon socket restart</td>
+<td>A dead child is skipped. A daemon <code>SocketException</code> or connect timeout triggers <strong>one</strong> restart-and-retry; it is not a retry of the user&#39;s partition code. Inspect executor/container loss separately if all local workers disappeared.</td>
+</tr>
+</tbody></table>
+</main></html>

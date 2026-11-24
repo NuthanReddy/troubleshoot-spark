@@ -1,0 +1,69 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>External shuffle service: serving map files after an executor exits · Troubleshoot Spark</title><link rel="stylesheet" href="../style.css"><main class="reader"><nav><a href=".././#map">Diagnostic map</a> · <a href="../guide.html">Lifecycle</a> · <a href="../scenarios.html">Cases</a> · <a href="../components/index.html">Components</a></nav><h1 id="external-shuffle-service-serving-map-files-after-an-executor-exits">External shuffle service: serving map files after an executor exits</h1>
+<p><a href="index.html">component index</a> | <a href="shuffle-block-resolver.html">Shuffle block resolver</a> | <a href="shuffle-reader.html">Shuffle reader</a></p>
+<p>On YARN, <code>YarnShuffleService</code> is an <strong>optional NodeManager auxiliary service</strong>. A reducer can ask it for a byte range from the producing executor&#39;s local shuffle files even after that executor JVM exits. “External” means outside the executor, <strong>not</strong> outside the node: the service does not replicate files or survive loss of the disk that contains them. It runs no Spark tasks and does not own <code>MapStatus</code> entries.</p>
+<h2 id="flow-at-a-glance">Flow at a glance</h2>
+<ol>
+<li><strong>Producing executor</strong>: Registers its local shuffle directories with the NodeManager service.</li>
+<li><strong>Reducing executor</strong>: Asks the service for reducer 2&#39;s block from attempt 41.</li>
+<li><strong>Shuffle service</strong>: Reads the indexed byte range from local disk and sends it to the reducer.</li>
+</ol>
+<blockquote>
+<p><strong>Watch for:</strong> Registration tells the service where the files are; it does not copy them. The service can outlive the executor, but it cannot serve bytes from a lost disk.</p>
+</blockquote>
+<details>
+<summary>Show the animated flow</summary>
+
+<p><img src="visuals/external-shuffle-service.svg" alt="Executor registers its directories and the NodeManager shuffle service serves a reducer the requested file slice"></p>
+</details>
+
+<h2 id="two-distinct-deployments">Two distinct deployments</h2>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>No external service</th>
+<th>External service enabled</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Remote fetch address in <code>MapStatus</code></td>
+<td>Producing executor&#39;s <code>BlockManagerId</code>, including its block-transfer port.</td>
+<td>Origin <strong>executor ID</strong> and host, but the <strong>service port</strong> (default 7337). Executors on one node can advertise the same host/port without sharing an executor ID.</td>
+</tr>
+<tr>
+<td>Process serving bytes</td>
+<td>The executor&#39;s Netty block-transfer service calls its <code>BlockManager</code>.</td>
+<td>Netty server inside the node&#39;s <code>NodeManager</code> JVM; it reads the origin executor&#39;s files directly.</td>
+</tr>
+<tr>
+<td>Executor exits with default local storage</td>
+<td>Losing the serving executor normally means recomputing needed outputs.</td>
+<td>Executor exit alone does not invalidate otherwise accessible shuffle files. Node, disk, or service failure can still make them unavailable.</td>
+</tr>
+</tbody></table>
+<p>The application setting <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/internal/config/package.scala#L856-L860"><code>spark.shuffle.service.enabled</code> defaults to false</a>. Setting it to true does <strong>not</strong> start a service. Administrators must <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/docs/running-on-yarn.md#L877-L896">install and configure the auxiliary service on participating NodeManagers</a>; its configured name (normally <code>spark_shuffle</code>) must <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/internal/config/package.scala#L898-L909">match the Spark setting</a>. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/storage/BlockManager.scala#L710-L744"><code>BlockManager.initialize</code> chooses the advertised address</a> and the <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/DAGScheduler.scala#L4845-L4863">scheduler distinguishes executor loss from file loss</a>. Neither deployment requires a remote transfer for a block that the consumer can read locally.</p>
+<h2 id="registration-then-fetch">Registration, then fetch</h2>
+<figure class="source-figure"><a href="../diagrams/components-external-shuffle-service-1.svg" title="Open diagram at full size"><img loading="lazy" src="../diagrams/components-external-shuffle-service-1.svg" alt="Sequence diagram for components external shuffle service; open to enlarge"></a><figcaption>Sequence diagram · <a href="../diagrams/components-external-shuffle-service-1.svg">Open full size</a></figcaption><details><summary>Text equivalent</summary><pre>sequenceDiagram
+    participant N as NodeManager and YarnShuffleService
+    participant E as Producing executor
+    participant R as Reducing executor
+    participant D as Producer local disk
+    N-&gt;&gt;N: serviceInit starts the shuffle transport server
+    E-&gt;&gt;N: RegisterExecutor(appId, execId, ExecutorShuffleInfo)
+    N--&gt;&gt;E: Registration acknowledgment
+    E-&gt;&gt;D: Commit shuffle data and index
+    Note over R: Tracker supplies origin execId, host, service port and block IDs
+    R-&gt;&gt;N: FetchShuffleBlocks for one shuffle and selected map and reduce IDs
+    N--&gt;&gt;R: StreamHandle(streamId, numChunks)
+    R-&gt;&gt;N: Request chunks from that stream
+    N-&gt;&gt;D: Resolve index offsets and read file segment
+    N--&gt;&gt;R: Requested shuffle bytes</pre></details></figure>
+<ol>
+<li><strong>Start and application scope.</strong> During <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/common/network-yarn/src/main/java/org/apache/spark/network/yarn/YarnShuffleService.java#L268-L338"><code>serviceInit</code></a> the NM service creates an <code>ExternalBlockHandler</code>, optional authentication bootstrap, and a server bound to the configured port. This happens independently of Spark task launch. The AM&#39;s <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/deploy/yarn/ExecutorRunnable.scala#L111-L151"><code>ExecutorRunnable</code></a> supplies named application service data in the container launch context; the NM&#39;s <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/common/network-yarn/src/main/java/org/apache/spark/network/yarn/YarnShuffleService.java#L422-L458"><code>initializeApplication</code></a> handles per-application settings and authentication when enabled. This is distinct from registering the executor&#39;s file layout.</li>
+<li><strong>Registration metadata.</strong> During <code>BlockManager.initialize</code>, each non-driver executor synchronously sends <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/common/network-shuffle/src/main/java/org/apache/spark/network/shuffle/ExternalBlockStoreClient.java#L295-L305"><code>RegisterExecutor</code></a> with application ID, executor ID and <code>ExecutorShuffleInfo</code> (local directory roots, subdirectory count, shuffle-manager information). The handler validates the registration and acknowledges it. The <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/common/network-shuffle/src/main/java/org/apache/spark/network/shuffle/ExternalShuffleBlockResolver.java#L127-L178">service-side resolver</a> keys this layout by <strong><code>(appId, execId)</code></strong>, optionally persisting it for NM recovery and reloading it on restart. No map outputs, offsets, or rows are uploaded during registration.</li>
+<li><strong>Block discovery versus block serving.</strong> The <a href="map-output-tracker-worker.html">tracker worker</a> supplies locations; the service does not answer which attempt won. The reducing executor sends <code>FetchShuffleBlocks(appId, execId, shuffleId, mapIds, reduceIds, batchFetchEnabled)</code> (legacy: <code>OpenBlocks</code>). For shuffle 7, map ID 41, reduce ID 2, it needs no logical map slot 3. The <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/common/network-shuffle/src/main/java/org/apache/spark/network/shuffle/ExternalBlockHandler.java#L188-L236">handler creates a stream over managed buffers</a>; the client <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/common/network-shuffle/src/main/java/org/apache/spark/network/shuffle/OneForOneBlockFetcher.java#L303-L320">requests chunks or streams them to disk</a>. For each block, the Java <code>ExternalShuffleBlockResolver</code> combines the registered layout with the filename, <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/common/network-shuffle/src/main/java/org/apache/spark/network/shuffle/ExternalShuffleBlockResolver.java#L399-L428">looks up index offsets and returns a data-file segment</a>. A bounded index cache stores offsets, not shuffle payloads.</li>
+</ol>
+<h2 id="lifetime-failure-and-diagnosis">Lifetime, failure, and diagnosis</h2>
+<p>With the service enabled, a normal executor&#39;s <code>DiskBlockManager</code> <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/storage/BlockManager.scala#L228-L240">does not delete its local files on stop</a>. <code>YarnShuffleService.stopContainer</code> only logs the event; <code>stopApplication</code> removes that application&#39;s registrations and asks the handler <strong>not</strong> to delete the directories (YARN handles directory cleanup). <code>serviceStop</code> <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/common/network-yarn/src/main/java/org/apache/spark/network/yarn/YarnShuffleService.java#L466-L522">closes the server, transport context, handler and state DB</a>. Recovering the registration DB after an NM restart can restore file discovery, not recover missing file contents.</p>
+<p><strong>Diagnostic:</strong> An executor failing <strong>during startup</strong> with <code>Failed to connect to external shuffle server</code> is on the <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/storage/BlockManager.scala#L770-L804">bounded registration-retry path</a>. Compare its reported port with <code>Started YARN shuffle service for Spark on port ...</code> in that node&#39;s NM log. A reducer failing <strong>later</strong> with <code>Executor is not registered (appId=..., execId=...)</code> reached the service but lost or never had the <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/common/network-shuffle/src/main/java/org/apache/spark/network/shuffle/ExternalShuffleBlockResolver.java#L196-L221">registration for that exact pair</a>; check NM restart/recovery and application cleanup. A registered executor with a missing index is a disk/layout problem instead. The client <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/common/network-shuffle/src/main/java/org/apache/spark/network/shuffle/ExternalBlockStoreClient.java#L114-L151">retries eligible transfers</a>; if data remains unavailable the <strong>driver</strong>, not the service, schedules recomputation.</p>
+</main></html>

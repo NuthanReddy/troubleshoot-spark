@@ -1,0 +1,63 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>BasePythonRunner: the executor JVM's side of a Python invocation · Troubleshoot Spark</title><link rel="stylesheet" href="../style.css"><main class="reader"><nav><a href=".././#map">Diagnostic map</a> · <a href="../guide.html">Lifecycle</a> · <a href="../scenarios.html">Cases</a> · <a href="../components/index.html">Components</a></nav><h1 id="basepythonrunner-the-executor-jvm39s-side-of-a-python-invocation">BasePythonRunner: the executor JVM&#39;s side of a Python invocation</h1>
+<p><a href="index.html">component index</a></p>
+<p><code>org.apache.spark.api.python.BasePythonRunner[IN, OUT]</code> turns an executor-side partition iterator into another iterator by exchanging data with a <a href="python-worker.html">local Python worker</a>. It is <strong>not</strong> <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/deploy/PythonRunner.scala#L38-L85"><code>org.apache.spark.deploy.PythonRunner</code></a>, the launcher that starts the application script and sets up the classic driver&#39;s Py4J gateway. A SQL query or RDD action can use many executor-side runner invocations without starting another Python driver.</p>
+<h2 id="flow-at-a-glance">Flow at a glance</h2>
+<ol>
+<li><strong>Executor runner</strong>: The runner gets a local worker and gives the task an output iterator.</li>
+<li><strong>Socket exchange</strong>: As the task pulls output, the runner feeds input and reads results over the same socket.</li>
+<li><strong>Clean finish</strong>: The runner releases a reusable worker only after reading its final reply.</li>
+</ol>
+<blockquote>
+<p><strong>Watch for:</strong> If the task stops reading early, cleanup closes the connection instead of returning the worker to the pool.</p>
+</blockquote>
+<details>
+<summary>Show the animated flow</summary>
+
+<p><img src="visuals/python-runner.svg" alt="Pulling the runner's iterator drives partition input and results over a worker socket until the finish reply"></p>
+</details>
+
+<h2 id="entry-points-and-ownership">Entry points and ownership</h2>
+<table>
+<thead>
+<tr>
+<th>Caller or peer</th>
+<th>Interface</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>PythonRDD.compute</code></td>
+<td>Creates <code>api.python.PythonRunner</code> for this split and calls <code>compute(parent.iterator, split.index, context)</code>. This concrete subclass uses <code>NON_UDF</code> and byte-array records/batches. The <code>PythonFunction</code> carries command bytes, executable/version, environment, includes, broadcast references, and an accumulator. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/api/python/PythonRDD.scala#L54-L92">RDD entry</a>.</td>
+</tr>
+<tr>
+<td>SQL Python operator</td>
+<td>For example, <code>BatchEvalPythonExec</code> prepares pickled input batches and calls a SQL runner with <code>SQL_BATCHED_UDF</code>, argument metadata, and metrics. The base class supplies the lifecycle; subclass writers/readers define the command and data encoding. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/python/BatchEvalPythonExec.scala#L131-L149">SQL entry</a>.</td>
+</tr>
+<tr>
+<td><code>SparkEnv</code> and <a href="python-worker-factory.html">worker factory</a></td>
+<td>Acquire a worker for the effective executable/modules/environment; release it after a clean finish or close it on task cleanup. The factory and process may outlive <code>compute</code>; the <code>Writer</code>, <code>ReaderIterator</code>, and cancellation state belong to this invocation.</td>
+</tr>
+</tbody></table>
+<h2 id="trace-pull-split-7-through-a-python-mappartitions">Trace: pull split 7 through a Python <code>mapPartitions</code></h2>
+<figure class="source-figure"><a href="../diagrams/components-python-runner-1.svg" title="Open diagram at full size"><img loading="lazy" src="../diagrams/components-python-runner-1.svg" alt="Sequence diagram for components python runner; open to enlarge"></a><figcaption>Sequence diagram · <a href="../diagrams/components-python-runner-1.svg">Open full size</a></figcaption><details><summary>Text equivalent</summary><pre>sequenceDiagram
+    participant T as Executor task thread
+    participant R as Runner and its output iterator
+    participant W as Local worker
+    T-&gt;&gt;R: compute(parent iterator, 7, TaskContext)
+    R-&gt;&gt;R: Acquire worker, then arm completion listener and monitor
+    R--&gt;&gt;T: Interruptible output iterator
+    T-&gt;&gt;R: Pull next output
+    R-&gt;&gt;W: Init frame, then serialized parent input as writable
+    W--&gt;&gt;R: Init response, then result frames as available
+    R--&gt;&gt;T: Next output batch
+    W--&gt;&gt;R: Metrics, end-of-data, accumulator updates, finish reply
+    R-&gt;&gt;R: Release once if reusable</pre></details></figure>
+<ol>
+<li><code>compute</code> derives executor-local settings (including local directories, task CPU allocation, and worker memory when specified) before obtaining the worker. It registers a task-completion listener and a cancellation monitor. It returns an <code>InterruptibleIterator</code>, <strong>not</strong> a materialized partition or a future for one. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/api/python/PythonRunner.scala#L690-L806">Acquire and construct iterator</a>.</li>
+<li><code>Writer.open</code> prepares a <code>START_OF_INIT_MESSAGE</code> frame: byte length, split index, Python version, task context, SparkFiles/includes, per-worker broadcast changes, eval type, runner/eval configuration, and command. The frame length covers the payload; input records follow separately. Broadcast IDs already installed for this worker need not be resent. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/api/python/PythonRunner.scala#L966-L982">Header start</a>, <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/api/python/PythonRunner.scala#L1059-L1083">header finish</a>, <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/api/python/PythonWorkerUtils.scala#L131-L191">broadcast differences</a>.</li>
+<li>In the ordinary RDD path, pulling output drives a <strong>non-blocking selector</strong> on the task thread: read available output, feed buffered parent input when writable. On input exhaustion the RDD writer emits <code>END_OF_DATA_SECTION</code>, then <code>Writer.close</code> emits <code>END_OF_STREAM</code>. This allows progress in both directions without materializing the partition. Do not infer a dedicated writer thread for every task: at this revision the optional pipelined mode applies to UDF eval types, not <code>NON_UDF</code>, and uses a blocking channel and separate JVM writer. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/api/python/PythonRunner.scala#L1440-L1490">Selector loop</a>, <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/api/python/PythonRunner.scala#L1577-L1609">buffering</a>, <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/api/python/PythonRunner.scala#L810-L836">pipelined branch</a>.</li>
+<li><code>ReaderIterator</code> checks <code>START_OF_INIT_RESPONSE</code> before decoding any result. The RDD reader treats a nonnegative length as data and negative control values as metrics, Python exception, or end-of-data. It consumes accumulator updates and the worker&#39;s final reply before returning the process to the pool. <code>releasedOrClosed.compareAndSet(false, true)</code> prevents task cleanup from closing a reusable worker already handed to someone else. If the consumer stops early, the completion listener closes the unreleased channel. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/api/python/PythonRunner.scala#L1190-L1261">Reader and metrics</a>, <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/api/python/PythonRunner.scala#L1760-L1823">RDD frames</a>, <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/api/python/PythonRunner.scala#L1276-L1290">terminal actions</a>.</li>
+</ol>
+<h2 id="if-a-task-stalls-or-fails">If a task stalls or fails</h2>
+<p>Use the executor log&#39;s task identifier: <code>Times: total ... boot ... init ... finish</code> separates startup/initialization from time after init. A Python traceback in an init response points to worker setup or command loading; one after successful init points into input processing, user code, or result serialization. An I/O exception with a recorded writer failure can instead be <strong>an upstream iterator failure</strong>: inspect the earlier cause before blaming Python.</p>
+<p>For cancellation, the monitor waits for an interrupted yet incomplete task, then can destroy its worker after <code>spark.python.task.killTimeout</code>. This is different from an optional idle I/O timeout and from eviction of an already released worker by the factory. See <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/api/python/PythonRunner.scala#L1291-L1368">error selection and cancellation</a>.</p>
+</main></html>

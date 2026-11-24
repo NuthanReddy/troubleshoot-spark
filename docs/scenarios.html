@@ -1,9 +1,11 @@
-<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>40 troubleshooting scenarios · Troubleshoot Spark</title><link rel="stylesheet" href="style.css"><main class="reader"><nav><a href="./">← Scenario explorer</a> · <a href="guide.html">Lifecycle</a> · <a href="scenarios.html">All cases</a></nav><h1 id="pyspark-on-yarn-40-scenarios-traced-through-the-spark-source">PySpark on YARN: 40 scenarios traced through the Spark source</h1>
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>PySpark on YARN: 40 scenarios traced through the Spark source · Troubleshoot Spark</title><link rel="stylesheet" href="style.css"><main class="reader"><nav><a href="./#map">Diagnostic map</a> · <a href="guide.html">Lifecycle</a> · <a href="scenarios.html">Cases</a> · <a href="components/index.html">Components</a></nav><h1 id="pyspark-on-yarn-40-scenarios-traced-through-the-spark-source">PySpark on YARN: 40 scenarios traced through the Spark source</h1>
 <p>Why can YARN show running containers while Spark shows no executors? Why does
 losing one shuffle block sometimes repeat a stage, while killing a whole
 executor need not count against a task&#39;s retry budget? The answer depends on
 <strong>which component detects the event and what unit of work it can recover</strong>.</p>
 <p>This is a companion to <a href="guide.html">PySpark on YARN: lifecycle, networking, and discovery</a>.
+The <a href="components/index.html">component design reference</a> explains
+the inputs, outputs, and internal decisions of the participants in each case.
 The cases follow classic PySpark batch applications through
 <a href="https://github.com/apache/spark/tree/dada2a6db5d73b152d6ba16e4fe21406f86abfe3">Apache Spark revision <code>dada2a6</code></a>.
 They are source walkthroughs, not reports from a live cluster. Examples assume
@@ -311,7 +313,19 @@ subject to the stage-failure limit.</li>
 <li><strong>Executors</strong> regenerate missing map output. The retried consumer can now fetch
 from its new location. Already available map outputs need not all be regenerated.</li>
 </ol>
-<ol class="sequence"><li><b>Reduce executor B → Original shuffle server</b><span>Fetch map output</span></li><li><b>Original shuffle server → Reduce executor B</b><span>Output unavailable</span></li><li><b>Reduce executor B → Driver / DAGScheduler</b><span>FetchFailed for current stage attempt</span></li><li><b>Driver / DAGScheduler → Driver / DAGScheduler</b><span>Invalidate output and schedule stage recovery</span></li><li><b>Driver / DAGScheduler → Replacement map executor</b><span>Recompute missing producer partition</span></li><li><b>Replacement map executor → Driver / DAGScheduler</b><span>MapStatus with new serving location</span></li><li><b>Driver / DAGScheduler → Reduce executor B</b><span>Retry consumer on an available executor</span></li><li><b>Reduce executor B → Replacement map executor</b><span>Fetch regenerated block</span></li></ol>
+<figure class="source-figure"><a href="diagrams/scenarios-1.svg" title="Open diagram at full size"><img loading="lazy" src="diagrams/scenarios-1.svg" alt="Sequence diagram for scenarios; open to enlarge"></a><figcaption>Sequence diagram · <a href="diagrams/scenarios-1.svg">Open full size</a></figcaption><details><summary>Text equivalent</summary><pre>sequenceDiagram
+    participant B as Reduce executor B
+    participant A as Original shuffle server
+    participant D as Driver / DAGScheduler
+    participant C as Replacement map executor
+    B-&gt;&gt;A: Fetch map output
+    A--xB: Output unavailable
+    B-&gt;&gt;D: FetchFailed for current stage attempt
+    D-&gt;&gt;D: Invalidate output and schedule stage recovery
+    D-&gt;&gt;C: Recompute missing producer partition
+    C--&gt;&gt;D: MapStatus with new serving location
+    D-&gt;&gt;B: Retry consumer on an available executor
+    B-&gt;&gt;C: Fetch regenerated block</pre></details></figure>
 <p><strong>Consequence / clue:</strong> Retrying only the reducer against the old address would
 not help. Look for <code>FetchFailed</code> followed by stage resubmission and new map task
 attempts. Executor exit alone does not imply data loss if an external shuffle
@@ -492,7 +506,16 @@ application ID</strong> with a <strong>new attempt ID</strong>. It does not rest
 create a new context, and obtain executors. Durable files may survive; Python
 variables, cached driver state, and the interrupted call stack do not.</li>
 </ol>
-<ol class="sequence"><li><b>AM / driver attempt 1 → YARN ResourceManager</b><span>Attempt lost without successful completion</span></li><li><b>YARN ResourceManager → YARN ResourceManager</b><span>Check attempt policy and remaining budget</span></li><li><b>YARN ResourceManager → Selected NodeManager</b><span>Launch a new AM container</span></li><li><b>Selected NodeManager → AM / driver attempt 2</b><span>Start new JVM and user script</span></li><li><b>AM / driver attempt 2 → YARN ResourceManager</b><span>Register new attempt for the same application</span></li></ol>
+<figure class="source-figure"><a href="diagrams/scenarios-2.svg" title="Open diagram at full size"><img loading="lazy" src="diagrams/scenarios-2.svg" alt="Sequence diagram for scenarios; open to enlarge"></a><figcaption>Sequence diagram · <a href="diagrams/scenarios-2.svg">Open full size</a></figcaption><details><summary>Text equivalent</summary><pre>sequenceDiagram
+    participant R as YARN ResourceManager
+    participant A as AM / driver attempt 1
+    participant N as Selected NodeManager
+    participant B as AM / driver attempt 2
+    A--xR: Attempt lost without successful completion
+    R-&gt;&gt;R: Check attempt policy and remaining budget
+    R-&gt;&gt;N: Launch a new AM container
+    N-&gt;&gt;B: Start new JVM and user script
+    B-&gt;&gt;R: Register new attempt for the same application</pre></details></figure>
 <p><strong>Consequence / clue:</strong> If the first attempt appended records before it died,
 rerunning the script can append them again unless the application or sink prevents
 duplicates. Correlate logs by <strong>attempt ID</strong>, not just application ID. This is a

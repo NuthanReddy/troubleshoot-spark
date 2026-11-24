@@ -1,0 +1,89 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Spark driver JVM: where application decisions are made · Troubleshoot Spark</title><link rel="stylesheet" href="../style.css"><main class="reader"><nav><a href=".././#map">Diagnostic map</a> · <a href="../guide.html">Lifecycle</a> · <a href="../scenarios.html">Cases</a> · <a href="../components/index.html">Components</a></nav><h1 id="spark-driver-jvm-where-application-decisions-are-made">Spark driver JVM: where application decisions are made</h1>
+<p><a href="index.html">component index</a></p>
+<p>In a classic PySpark application, <code>orders.py</code> runs in a <a href="python-driver.html">Python process</a>.
+The <strong>driver JVM</strong> holds the live <a href="spark-context.html">SparkContext</a>, SQL plans, schedulers,
+and executor registrations. &quot;Driver&quot; names a process role, not a class to instantiate.
+The JVM schedules Spark tasks; YARN grants containers, and executors run the tasks.
+This is not a Spark Connect client/server deployment.</p>
+<h2 id="flow-at-a-glance">Flow at a glance</h2>
+<ol>
+<li><strong>Executor</strong>: Registers with the driver and signals it is ready.</li>
+<li><strong>Driver JVM</strong>: Sends a task to the executor over Spark RPC.</li>
+<li><strong>Driver backend</strong>: Frees the task&#39;s cores on its final status update.</li>
+</ol>
+<blockquote>
+<p><strong>Key distinction:</strong> YARN grants the container; the driver decides which tasks its executor runs.</p>
+</blockquote>
+<details>
+<summary>Show the animated flow</summary>
+
+<p><img src="visuals/spark-driver.svg" alt="An executor registers, the driver sends a task, and the final task update frees its cores"></p>
+</details>
+
+<h2 id="placement-which-process-must-stay-alive">Placement: which process must stay alive?</h2>
+<table>
+<thead>
+<tr>
+<th>YARN deploy mode</th>
+<th>JVM that owns the driver</th>
+<th>How the AM finds it</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Cluster</td>
+<td>The AM JVM in the AM container. A thread in that JVM invokes <code>deploy.PythonRunner.main</code>; the script is a child <strong>process</strong> in the same container. The submit client is not the driver.</td>
+<td>No network discovery is needed to obtain the context: the cluster scheduler hands the AM the actual <code>SparkContext</code> object. The AM uses its bound RPC address.</td>
+</tr>
+<tr>
+<td>Client</td>
+<td>The submit-side JVM on the client host. Its Python child also stays there. The AM in YARN is a separate JVM that launches executors, not a backup driver.</td>
+<td>The driver backend passes <code>host:port</code> as an AM argument. The AM resolves the driver&#39;s <code>YarnScheduler</code> endpoint through Spark RPC.</td>
+</tr>
+</tbody></table>
+<p>Follow the launch from SparkSubmit (<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/deploy/SparkSubmit.scala#L568-L578">client</a>, <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/deploy/SparkSubmit.scala#L824-L842">cluster</a>)
+to <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/deploy/yarn/ApplicationMaster.scala#L741-L799">the AM user thread</a>, or follow the client-mode address from the
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/scheduler/cluster/YarnClientSchedulerBackend.scala#L45-L73">submitting backend</a> to the <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/deploy/yarn/ApplicationMaster.scala#L564-L584">separate AM</a>.</p>
+<h2 id="from-startup-to-shutdown">From startup to shutdown</h2>
+<ol>
+<li><strong>Publish the driver.</strong> The <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/deploy/PythonRunner.scala#L54-L85">JVM launcher</a> starts the local
+<a href="py4j-gateway.html">Py4J gateway</a> and the Python child. When the script requests a
+context, its JVM constructor installs the driver&#39;s <a href="spark-env.html">SparkEnv</a> and
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/SparkContext.scala#L633-L682">initializes the schedulers</a>. A running Python interpreter alone does
+not imply a ready driver.</li>
+<li><strong>Coordinate with YARN.</strong> In cluster mode <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/scheduler/cluster/YarnClusterScheduler.scala#L27-L36">the scheduler hook</a> calls
+<code>sparkContextInitialized(sc)</code>, which <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/deploy/yarn/ApplicationMaster.scala#L405-L419">completes a promise and waits</a>.
+The <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/deploy/yarn/ApplicationMaster.scala#L496-L539">AM thread</a> obtains <code>sc.env.rpcEnv</code>, reads the actual host and port,
+registers with the ResourceManager, creates the allocator, and resumes the waiting
+call. In PySpark the <code>PythonRunner</code> thread is waiting for its child; the context
+constructor runs on the JVM side of the Py4J call. In client mode the already-listening
+driver instead submits and waits for the YARN application to run.</li>
+<li><strong>Accept executors and dispatch work.</strong> An executor sends
+<code>RegisterExecutor(id, executorRef, host, cores, ..., resourceProfileId)</code>. On
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/cluster/CoarseGrainedSchedulerBackend.scala#L247-L348">acceptance</a> the driver records the endpoint and resources and replies <code>true</code>;
+<code>LaunchedExecutor(id)</code> makes those cores available for offers. A distributed action
+drives the JVM schedulers. The <a href="driver-scheduler-backend.html">driver backend</a>
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/cluster/CoarseGrainedSchedulerBackend.scala#L439-L485">encodes each chosen <code>TaskDescription</code> into <code>LaunchTask</code></a>. An incoming
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/cluster/CoarseGrainedSchedulerBackend.scala#L178-L196"><code>StatusUpdate</code></a> goes to the task scheduler; a terminal update releases that
+task&#39;s resources. Neither message goes through Python or the ResourceManager.</li>
+<li><strong>Finish two lifetimes.</strong> <code>spark.stop()</code> <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/SparkContext.scala#L2621-L2661">stops the context</a>; it does not exit
+the Python script. The runner <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/deploy/PythonRunner.scala#L119-L131">waits for the child exit and closes its gateway</a>.
+In cluster mode the AM user thread translates a normal return or a <code>SparkUserAppException</code>
+into a finish request. Before AM registration, <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/deploy/yarn/ApplicationMaster.scala#L377-L393"><code>finish</code></a> records a
+context-initialization failure instead of preserving a user exit code.</li>
+</ol>
+<figure class="source-figure"><a href="../diagrams/components-spark-driver-1.svg" title="Open diagram at full size"><img loading="lazy" src="../diagrams/components-spark-driver-1.svg" alt="Flowchart for components spark driver; open to enlarge"></a><figcaption>Flowchart · <a href="../diagrams/components-spark-driver-1.svg">Open full size</a></figcaption><details><summary>Text equivalent</summary><pre>flowchart LR
+    P[&quot;Python driver process&quot;] &lt;--&gt;|&quot;local Py4J: API calls and replies&quot;| D[&quot;Driver JVM: context and schedulers&quot;]
+    D &lt;--&gt;|&quot;Spark RPC: register, launch, report&quot;| E[&quot;Executor JVM&quot;]
+    A[&quot;AM resource allocator&quot;] &lt;--&gt;|&quot;YARN container requests and grants&quot;| R[&quot;ResourceManager&quot;]
+    A -.-&gt;|&quot;Driver reference: same JVM in cluster mode, remote in client mode&quot;| D</pre></details></figure>
+<h2 id="diagnostic-no-executor-logs-yet">Diagnostic: no executor logs yet</h2>
+<p>If a cluster-mode script blocks <strong>before</strong> <code>getOrCreate()</code>, the AM can report
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/deploy/yarn/ApplicationMaster.scala#L496-L539"><code>Timed out waiting for SparkContext.</code></a> It started the user application but
+has not reached allocator creation. Read the AM container&#39;s Python output and JVM logs,
+not executor logs. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/deploy/yarn/config/package.scala#L249-L260"><code>spark.yarn.am.waitTime</code></a> bounds that wait; increasing it
+only helps if the pre-context work will finish.</p>
+<p>If the JVM itself dies, its in-memory context and scheduler state are lost. A
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/deploy/yarn/ApplicationMaster.scala#L225-L255">YARN retry</a>, when granted in cluster mode, starts a fresh AM/driver and
+reruns the script; it does not resume the previous Python stack. A managed client-mode AM
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/deploy/yarn/ApplicationMaster.scala#L878-L897">handles driver disconnect by finishing</a>, not by recreating the client driver.</p>
+</main></html>

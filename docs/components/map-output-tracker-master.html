@@ -1,0 +1,66 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>MapOutputTrackerMaster: the driver's directory of map outputs · Troubleshoot Spark</title><link rel="stylesheet" href="../style.css"><main class="reader"><nav><a href=".././#map">Diagnostic map</a> · <a href="../guide.html">Lifecycle</a> · <a href="../scenarios.html">Cases</a> · <a href="../components/index.html">Components</a></nav><h1 id="mapoutputtrackermaster-the-driver39s-directory-of-map-outputs">MapOutputTrackerMaster: the driver&#39;s directory of map outputs</h1>
+<p><a href="index.html">component index</a> | <a href="map-output-tracker-worker.html">Executor-side tracker</a></p>
+<p>When a reduce task needs shuffle 7, the driver can tell it <strong>which map attempts produced usable output, where, and roughly how large each reduce block is</strong>. <code>MapOutputTrackerMaster</code> owns that directory for the application. It does not hold the map&#39;s records, open its index file, or forward its bytes. This page follows the ordinary blocking, pull-based shuffle.</p>
+<h2 id="flow-at-a-glance">Flow at a glance</h2>
+<ol>
+<li><strong>Map task</strong>: Reports where attempt 41 wrote its blocks for shuffle 7.</li>
+<li><strong>Driver scheduler</strong>: Records that status in the tracker&#39;s slot for map partition 3.</li>
+<li><strong>Driver tracker</strong>: Answers executor lookups with locations and size estimates.</li>
+</ol>
+<blockquote>
+<p><strong>Key distinction:</strong> A retry can put a new attempt in slot 3. The tracker tells executors where to fetch the new output; it never forwards the shuffle bytes.</p>
+</blockquote>
+<details>
+<summary>Show the animated flow</summary>
+
+<p><img src="visuals/map-output-tracker-master.svg" alt="Map attempt 41 reports its location, the driver records it in slot 3, and an executor looks it up"></p>
+</details>
+
+<h2 id="what-the-driver-stores">What the driver stores</h2>
+<table>
+<thead>
+<tr>
+<th>Key or field</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>shuffleStatuses(shuffleId)</code></td>
+<td>A <code>ShuffleStatus</code> for one shuffle. <code>DAGScheduler</code> registers it when creating the shuffle map stage, with the number of input map partitions and output reduce partitions.</td>
+</tr>
+<tr>
+<td><code>mapStatuses(mapIndex)</code></td>
+<td>One accepted <code>MapStatus</code> for this <strong>input</strong> partition, or <code>null</code> if no output is available. There is not a slot per task attempt. A per-shuffle read/write lock guards the slots and the available-output count.</td>
+</tr>
+<tr>
+<td><code>status.mapId</code>, <code>status.location</code></td>
+<td>The ID used in the physical block name (normally the task attempt ID) and the serving <code>BlockManagerId</code>. The location can point to an executor&#39;s block server or to the optional <a href="external-shuffle-service.html">external shuffle service</a>.</td>
+</tr>
+<tr>
+<td><code>status.getSizeForBlock(reduceId)</code></td>
+<td>Estimated bytes for this <strong>output</strong> partition. Compact encodings preserve the distinction between empty and nonempty blocks; these sizes are not file offsets.</td>
+</tr>
+</tbody></table>
+<p>For example, <code>shuffleStatuses(7).mapStatuses(3)</code> can describe attempt <strong>41</strong>. A reader of reduce partition <strong>2</strong> needs <code>ShuffleBlockId(7, 41, 2)</code>, not <code>(7, 3, 2)</code>. A retry can put a different attempt in slot 3 without renumbering the map partition. The old fetch protocol uses the map partition ID as <code>mapId</code> instead. See the <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/MapOutputTracker.scala#L63-L108">slot layout</a>, <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/ShuffleMapTask.scala#L97-L113">map task&#39;s ID choice</a>, and <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/MapStatus.scala#L38-L89">MapStatus contract</a>.</p>
+<h2 id="from-registration-to-a-reducer39s-lookup">From registration to a reducer&#39;s lookup</h2>
+<figure class="source-figure"><a href="../diagrams/components-map-output-tracker-master-1.svg" title="Open diagram at full size"><img loading="lazy" src="../diagrams/components-map-output-tracker-master-1.svg" alt="Sequence diagram for components map output tracker master; open to enlarge"></a><figcaption>Sequence diagram · <a href="../diagrams/components-map-output-tracker-master-1.svg">Open full size</a></figcaption><details><summary>Text equivalent</summary><pre>sequenceDiagram
+    participant T as Map task on executor A
+    participant D as DAGScheduler
+    participant M as Driver tracker
+    participant W as Tracker worker on executor B
+    D-&gt;&gt;M: registerShuffle(7, numMaps, numReduces, jobId)
+    T--&gt;&gt;D: Task result includes MapStatus for attempt 41
+    D-&gt;&gt;M: registerMapOutput(7, mapIndex 3, status)
+    W-&gt;&gt;M: GetMapOutputStatuses(7)
+    M--&gt;&gt;W: Serialized status array or broadcast reference
+    Note over W: The reader fetches data from the address in the status</pre></details></figure>
+<ol>
+<li>The driver <code>SparkEnv</code> <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/SparkEnv.scala#L736-L759">creates the master and registers the <code>MapOutputTracker</code> RPC endpoint</a>. At <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/DAGScheduler.scala#L773-L785">stage creation</a>, the scheduler registers the shuffle if needed. On task success, <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/DAGScheduler.scala#L4094-L4116"><code>DAGScheduler</code> checks the completion&#39;s epoch</a>, then registers the result using <code>smt.partitionId</code>, <strong>not</strong> <code>status.mapId</code>. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/MapOutputTracker.scala#L218-L245"><code>addMapOutput</code></a> updates the slot, a reverse map from map ID to index, and, for a newly available slot, the count. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/ShuffleMapStage.scala#L107-L132"><code>ShuffleMapStage</code></a> uses that count for readiness and the missing indices for recomputation.</li>
+<li>On a worker cache miss, the <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/MapOutputTracker.scala#L602-L632">endpoint</a> enqueues <code>GetMapOutputMessage(shuffleId, context)</code>. A <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/MapOutputTracker.scala#L844-L892">dispatcher thread</a> replies on the original RPC context, so serialization does not block the endpoint&#39;s normal dispatch thread. The request is for the <strong>whole shuffle&#39;s status array</strong>, not a reduce partition&#39;s records.</li>
+<li>The first lookup <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/MapOutputTracker.scala#L455-L478">serializes and caches</a> the snapshot. Below <code>spark.shuffle.mapOutput.minSizeForBroadcast</code> the <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/MapOutputTracker.scala#L1739-L1785">encoder</a> returns compressed metadata directly; <strong>at or above</strong> the threshold it broadcasts that metadata and returns a serialized broadcast reference. Both replies describe the same files. The driver can also <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/MapOutputTracker.scala#L1161-L1193">sum size estimates by reducer</a> without fetching any data.</li>
+</ol>
+<h2 id="loss-cleanup-and-diagnosis">Loss, cleanup, and diagnosis</h2>
+<p>A fetch failure with a known map index can make the scheduler <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/DAGScheduler.scala#L4236-L4244">unregister the output</a>. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/MapOutputTracker.scala#L325-L335"><code>removeMapOutput</code> clears the slot and invalidates the cached snapshot</a> <strong>only if the current location matches the reported address</strong>; <code>unregisterMapOutput</code> <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/MapOutputTracker.scala#L995-L1003">advances the epoch</a>. This prevents a delayed failure at one address from removing a replacement at a different address through that slot update. Executor- or host-level loss can <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/MapOutputTracker.scala#L1063-L1087">invalidate more than one slot</a>. When retry is allowed, the <strong>scheduler</strong>, not the tracker, <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/DAGScheduler.scala#L4281-L4317">resubmits the affected stages</a>; later tasks carry an epoch that makes workers discard stale metadata.</p>
+<p><strong>Diagnostic:</strong> If a reducer logs <code>Missing an output location</code>, correlate that shuffle&#39;s map-stage completions with driver logs for ignored completions or lost shuffle files. A missing status is not an empty reduce block. If the reducer already has an address and reports an index-file or connection error instead, continue at the <a href="shuffle-block-resolver.html">resolver</a> or the serving process.</p>
+<p>At cleanup, <code>ContextCleaner</code> <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/ContextCleaner.scala#L236-L250">requests shuffle removal before unregistering its directory entry</a>. At application shutdown <code>SparkEnv</code> calls <code>stop</code>; the <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/MapOutputTracker.scala#L1415-L1426">master stops its dispatch pool and endpoint and clears the directory</a>. Neither action makes tracker RPCs a file-deletion protocol.</p>
+</main></html>

@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1319.454 234.67499999999998" width="1319.454" height="234.67499999999998" style="--bg:#101d2e;--fg:#ecf3f8;--line:#839ab5;--accent:#93e3d1;background:var(--bg)">
+<style>
+  text { font-family: 'system-ui', system-ui, sans-serif; }
+  svg {
+    /* Derived from --bg and --fg (overridable via --line, --accent, etc.) */
+    --_text:          var(--fg);
+    --_text-sec:      var(--muted, color-mix(in srgb, var(--fg) 60%, var(--bg)));
+    --_text-muted:    var(--muted, color-mix(in srgb, var(--fg) 40%, var(--bg)));
+    --_text-faint:    color-mix(in srgb, var(--fg) 25%, var(--bg));
+    --_line:          var(--line, color-mix(in srgb, var(--fg) 50%, var(--bg)));
+    --_arrow:         var(--accent, color-mix(in srgb, var(--fg) 85%, var(--bg)));
+    --_node-fill:     var(--surface, color-mix(in srgb, var(--fg) 3%, var(--bg)));
+    --_node-stroke:   var(--border, color-mix(in srgb, var(--fg) 20%, var(--bg)));
+    --_group-fill:    var(--bg);
+    --_group-hdr:     color-mix(in srgb, var(--fg) 5%, var(--bg));
+    --_inner-stroke:  color-mix(in srgb, var(--fg) 12%, var(--bg));
+    --_key-badge:     color-mix(in srgb, var(--fg) 10%, var(--bg));
+  }
+</style>
+<defs>
+  <marker id="arrowhead" markerWidth="8" markerHeight="5" refX="7" refY="2.5" orient="auto">
+    <polygon points="0 0, 8 2.5, 0 5" fill="var(--_arrow)" stroke="var(--_arrow)" stroke-width="0.75" stroke-linejoin="round" />
+  </marker>
+  <marker id="arrowhead-start" markerWidth="8" markerHeight="5" refX="1" refY="2.5" orient="auto-start-reverse">
+    <polygon points="8 0, 0 2.5, 8 5" fill="var(--_arrow)" stroke="var(--_arrow)" stroke-width="0.75" stroke-linejoin="round" />
+  </marker>
+</defs>
+<polyline class="edge" data-from="P" data-to="D" data-style="solid" data-arrow-start="true" data-arrow-end="true" data-label="local Py4J: API calls and replies" points="215.3300000000002,58.44999999999999 459.2620000000002,58.44999999999999 459.2620000000002,150.5 626.1489999999999,150.5" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" marker-start="url(#arrowhead-start)" />
+<polyline class="edge" data-from="D" data-to="E" data-style="solid" data-arrow-start="true" data-arrow-end="true" data-label="Spark RPC: register, launch, report" points="880.7659999999998,156.64999999999998 1151.548,156.64999999999998" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" marker-start="url(#arrowhead-start)" />
+<polyline class="edge" data-from="A" data-to="R" data-style="solid" data-arrow-start="true" data-arrow-end="true" data-label="YARN container requests and grants" points="214.589,150.5 229.35200000000017,150.5 229.35200000000017,104.475 447.2620000000002,104.475 447.2620000000002,91.74999999999999 471.2620000000002,91.74999999999999" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" marker-start="url(#arrowhead-start)" />
+<polyline class="edge" data-from="A" data-to="D" data-style="dotted" data-arrow-start="false" data-arrow-end="true" data-label="Driver reference: same JVM in cluster mode, remote in client mode" points="214.589,162.79999999999998 250.589,162.79999999999998 250.589,175.52499999999998 614.1489999999999,175.52499999999998 614.1489999999999,162.79999999999998 626.1489999999999,162.79999999999998" fill="none" stroke="var(--_line)" stroke-width="1" stroke-dasharray="4 4" marker-end="url(#arrowhead)" />
+<g class="edge-label" data-from="P" data-to="D" data-label="local Py4J: API calls and replies">
+  <rect x="259.3300000000002" y="42.44999999999999" width="167.93200000000002" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1" />
+  <text x="343.2960000000002" y="57.59999999999999" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">local Py4J: API calls and replies</text>
+</g>
+<g class="edge-label" data-from="D" data-to="E" data-label="Spark RPC: register, launch, report">
+  <rect x="924.7659999999998" y="140.64999999999998" width="182.782" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1" />
+  <text x="1016.1569999999998" y="155.79999999999998" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">Spark RPC: register, launch, report</text>
+</g>
+<g class="edge-label" data-from="A" data-to="R" data-label="YARN container requests and grants">
+  <rect x="237.35200000000015" y="88.475" width="189.91000000000005" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1" />
+  <text x="332.3070000000002" y="103.625" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">YARN container requests and grants</text>
+</g>
+<g class="edge-label" data-from="A" data-to="D" data-label="Driver reference: same JVM in cluster mode, remote in client mode">
+  <rect x="258.589" y="159.52499999999998" width="323.55999999999995" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1" />
+  <text x="420.36899999999997" y="174.67499999999998" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">Driver reference: same JVM in cluster mode, remote in client mode</text>
+</g>
+<g class="node" data-id="P" data-label="Python driver process" data-shape="rectangle">
+  <rect x="40.00000000000023" y="39.999999999999986" width="175.32999999999998" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="127.66500000000022" y="58.44999999999999" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">Python driver process</text>
+</g>
+<g class="node" data-id="D" data-label="Driver JVM: context and schedulers" data-shape="rectangle">
+  <rect x="626.1489999999999" y="138.2" width="254.617" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="753.4574999999999" y="156.64999999999998" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">Driver JVM: context and schedulers</text>
+</g>
+<g class="node" data-id="E" data-label="Executor JVM" data-shape="rectangle">
+  <rect x="1151.548" y="138.2" width="127.90599999999999" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="1215.501" y="156.64999999999998" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">Executor JVM</text>
+</g>
+<g class="node" data-id="A" data-label="AM resource allocator" data-shape="rectangle">
+  <rect x="40" y="138.2" width="174.589" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="127.2945" y="156.64999999999998" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">AM resource allocator</text>
+</g>
+<g class="node" data-id="R" data-label="ResourceManager" data-shape="rectangle">
+  <rect x="471.2620000000002" y="73.29999999999998" width="155.32299999999998" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="548.9235000000002" y="91.74999999999999" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">ResourceManager</text>
+</g>
+</svg>

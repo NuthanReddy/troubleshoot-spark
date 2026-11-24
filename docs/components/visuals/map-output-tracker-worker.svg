@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="360" height="373" viewBox="0 0 360 373" role="img" aria-labelledby="flow-title" aria-describedby="flow-desc">
+<title id="flow-title">MapOutputTrackerWorker: the executor&apos;s shuffle lookup cache: Flow at a glance</title>
+<desc id="flow-desc">1. Shuffle manager: Asks which blocks contain data for reduce partition 2 of shuffle 7. 2. Executor tracker: Reuses cached map statuses or asks the driver for them. 3. Shuffle reader: Receives nonempty block IDs grouped by serving address.</desc>
+<style>
+@keyframes handoff {
+  0%, 18% { transform: translateY(0); }
+  40%, 58% { transform: translateY(121px); }
+  82%, 100% { transform: translateY(242px); }
+}
+@media (prefers-reduced-motion: no-preference) {
+  #focus { display: inline; animation: handoff 4.6s ease-in-out 1 both; }
+}
+@media (prefers-reduced-motion: reduce) { #focus { display: none; animation: none; } }
+</style>
+<rect x="1" y="1" width="358" height="371" rx="13" fill="#f2f7f6" stroke="#b8cbc8"/>
+<path d="M24 30 V272" fill="none" stroke="#577d7b" stroke-width="2"/>
+<g font-family="Arial, Helvetica, sans-serif">
+  <rect x="48" y="10" width="302" height="111" rx="9" fill="#fff" stroke="#a8bdbb"/>
+  <circle cx="24" cy="30" r="12" fill="#184d50"/>
+  <text x="24" y="36" text-anchor="middle" font-size="17" font-weight="700" fill="#fff">1</text>
+  <text font-size="19" font-weight="700" fill="#12383d"><tspan x="62" y="36">Shuffle manager</tspan></text>
+  <text font-size="18" fill="#223a40"><tspan x="62" y="61">Asks which blocks contain</tspan><tspan x="62" y="84">data for reduce partition 2</tspan><tspan x="62" y="107">of shuffle 7.</tspan></text>
+  <rect x="48" y="131" width="302" height="111" rx="9" fill="#fff" stroke="#a8bdbb"/>
+  <circle cx="24" cy="151" r="12" fill="#184d50"/>
+  <text x="24" y="157" text-anchor="middle" font-size="17" font-weight="700" fill="#fff">2</text>
+  <text font-size="19" font-weight="700" fill="#12383d"><tspan x="62" y="157">Executor tracker</tspan></text>
+  <text font-size="18" fill="#223a40"><tspan x="62" y="182">Reuses cached map</tspan><tspan x="62" y="205">statuses or asks the</tspan><tspan x="62" y="228">driver for them.</tspan></text>
+  <rect x="48" y="252" width="302" height="111" rx="9" fill="#fff" stroke="#a8bdbb"/>
+  <circle cx="24" cy="272" r="12" fill="#184d50"/>
+  <text x="24" y="278" text-anchor="middle" font-size="17" font-weight="700" fill="#fff">3</text>
+  <text font-size="19" font-weight="700" fill="#12383d"><tspan x="62" y="278">Shuffle reader</tspan></text>
+  <text font-size="18" fill="#223a40"><tspan x="62" y="303">Receives nonempty block</tspan><tspan x="62" y="326">IDs grouped by serving</tspan><tspan x="62" y="349">address.</tspan></text>
+</g>
+<g id="focus" display="none" aria-hidden="true">
+  <circle cx="24" cy="30" r="16" fill="none" stroke="#17484d" stroke-width="2"/>
+  <path d="M40 25 l6 5 -6 5 z" fill="#17484d"/>
+</g>
+</svg>

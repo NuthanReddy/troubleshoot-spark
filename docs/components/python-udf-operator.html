@@ -1,0 +1,110 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Scalar Python UDF operator: crossing the executor JVM boundary · Troubleshoot Spark</title><link rel="stylesheet" href="../style.css"><main class="reader"><nav><a href=".././#map">Diagnostic map</a> · <a href="../guide.html">Lifecycle</a> · <a href="../scenarios.html">Cases</a> · <a href="../components/index.html">Components</a></nav><h1 id="scalar-python-udf-operator-crossing-the-executor-jvm-boundary">Scalar Python UDF operator: crossing the executor JVM boundary</h1>
+<p><a href="index.html">component index</a> | <a href="sql-planner.html">SQL physical planner</a></p>
+<p><code>orders.where(F.col(&quot;status&quot;) == &quot;PAID&quot;)</code> builds a <strong>Catalyst expression</strong> from
+Python. An executor JVM can evaluate that comparison itself, and a data source
+may push it down. In contrast, a scalar <code>PythonUDF</code> that remains in the plan is
+<code>Unevaluable</code> as a normal JVM expression. Spark extracts it into a dedicated
+operator. This page follows the <strong>external-worker</strong> path in classic batch
+PySpark, not Spark Connect, a Python table function, or the separate in-process
+Arrow evaluator present in this revision.</p>
+<h2 id="flow-at-a-glance">Flow at a glance</h2>
+<ol>
+<li><strong>Executor JVM</strong>: The operator keeps each order ID and sends only the status to Python.</li>
+<li><strong>Python worker</strong>: Runs the paid-status function and returns the results in input order.</li>
+<li><strong>Row assembly</strong>: The operator pairs each result with the oldest saved order ID.</li>
+</ol>
+<blockquote>
+<p><strong>Key distinction:</strong> The scalar UDF returns one value per input; the JVM filter decides which orders to keep.</p>
+</blockquote>
+<details>
+<summary>Show the animated flow</summary>
+
+<p><img src="visuals/python-udf-operator.svg" alt="Statuses go to Python while order IDs stay in the JVM to pair with the returning results"></p>
+</details>
+
+<h2 id="how-the-driver-chooses-a-path">How the driver chooses a path</h2>
+<p>The Python driver wraps the function and declared return type in a JVM
+<code>UserDefinedPythonFunction</code>. On the driver JVM, <code>PythonUDF</code> describes the function,
+input expressions, SQL result type, eval type, determinism and result ID.
+<code>ExtractPythonUDFs</code> finds calls computable from a single child&#39;s attributes,
+adds typed result attributes (such as <code>pythonUDF0</code>) and rewrites the parent to
+read them. Eligible same-eval-type calls can share an operator; an intervening
+JVM expression or incompatible eval type can require another operator. The
+physical <code>PythonEvals</code> strategy maps the logical eval node to a concrete runner
+path. This plan state belongs to the query, not the Python worker.</p>
+<table>
+<thead>
+<tr>
+<th>Path</th>
+<th>Executor JVM to local Python worker</th>
+<th>Return path</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>BatchEvalPythonExec</code> / <code>SQL_BATCHED_UDF</code></td>
+<td><code>getInputIterator</code> converts the projected arguments to Java values and pickles batches. <code>PythonUDFWithNamedArgumentsRunner.compute</code> sends the byte arrays.</td>
+<td>Unpickles returned batches and converts values with <code>EvaluatePython.makeFromJava</code> for the declared SQL type.</td>
+</tr>
+<tr>
+<td><code>ArrowEvalPythonExec</code> / e.g. <code>SQL_ARROW_BATCHED_UDF</code></td>
+<td>On row input, <code>ArrowPythonWithNamedArgumentRunner</code> with <code>BatchedPythonArrowInput</code> writes Arrow record batches. A supported columnar child can also be consumed directly when enabled.</td>
+<td>Reads Arrow <code>ColumnarBatch</code> results; the row-input evaluator checks their data types and iterates the rows. An Arrow-optimized <strong>regular</strong> scalar UDF still has a per-value Python API; a scalar pandas UDF uses a different eval type and a series-oriented API.</td>
+</tr>
+</tbody></table>
+<p>The comparison is about <strong>row data</strong>, not the serialization of the function
+itself. <code>useArrow=False</code> explicitly selects the regular pickle path; requesting
+Arrow does not convert a scalar function into a pandas UDF. For a regular
+Arrow-optimized UDF, missing Python dependencies at construction or a configured
+UDT fallback at extraction can select pickle. That is not a retry policy for
+Python exceptions. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/python/pyspark/sql/udf.py#L95-L152">Python selection</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/expressions/PythonUDF.scala#L475-L501">JVM descriptor</a> ·
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/python/ExtractPythonUDFs.scala#L304-L382">extraction and rewrite</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/SparkStrategies.scala#L976-L993">strategy dispatch</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/expressions/PythonUDF.scala#L282-L293">UDT fallback</a>.</p>
+<h2 id="trace-retain-an-order-id-while-python-evaluates-its-status">Trace: retain an order ID while Python evaluates its status</h2>
+<pre><code class="language-python">from pyspark.sql import functions as F
+
+@F.udf(returnType=&quot;boolean&quot;, useArrow=False)
+def is_paid(status):
+    return None if status is None else status == &quot;PAID&quot;
+
+paid_ids = orders.where(is_paid(&quot;status&quot;)).select(&quot;order_id&quot;)
+</code></pre>
+<ol>
+<li>With experimental Python-to-Catalyst transpilation off, the filter consumes
+a boolean result attribute above <code>BatchEvalPython</code>; the comparison in the
+function body is <strong>not</strong> a JVM filter on <code>status</code>. The child supplies <code>status</code>
+for the UDF argument and <code>order_id</code> for the final projection.</li>
+<li><code>EvalPythonExec.doExecute</code> constructs a partition evaluator. For each task
+attempt, <code>EvalPythonPartitionEvaluator.eval</code> binds the arguments, deduplicates
+equivalent argument expressions and records their offsets (and names, if any).
+Only projected UDF arguments go to the worker; <code>order_id</code> need not cross the
+socket. The <a href="python-runner.html">executor-side runner</a> communicates with a
+<a href="python-worker.html">local Python worker</a>; there is no call to the Python
+<strong>driver</strong> per row.</li>
+<li>On the ordinary row path, the evaluator puts the required pass-through fields
+in a task-local FIFO <code>HybridRowQueue</code> before sending each input. Returned scalar
+results correspond <strong>one-for-one, in input order</strong>. Each result is paired with
+the oldest saved fields via <code>JoinedRow</code> and an <code>UnsafeProjection</code>. No key lookup
+or shuffle is involved. If no child fields are needed, the generic evaluator
+skips the queue and emits projected results directly.</li>
+<li>For <code>(order_id, status)</code> inputs <code>(41, &quot;PAID&quot;)</code>, <code>(42, NULL)</code>, <code>(43, &quot;OPEN&quot;)</code>,
+Python returns <code>true</code>, <code>NULL</code>, <code>false</code>. The JVM filter retains only order <code>41</code>;
+<strong>the filter</strong>, not the scalar UDF operator, changed the row count. Task
+completion closes the queue. A reused Python process does not reuse that
+partition&#39;s queue or result rows. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/python/EvalPythonExec.scala#L36-L94">Partition execution</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/python/EvalPythonEvaluatorFactory.scala#L78-L174">alignment</a>.</li>
+</ol>
+<h2 id="where-time-or-failures-show-up">Where time or failures show up</h2>
+<p>Use <code>paid_ids.explain(&quot;formatted&quot;)</code> to identify <code>BatchEvalPython</code> or
+<code>ArrowEvalPython</code> and the JVM filter above it. Compare the SQL operator&#39;s <strong>data
+sent to Python workers</strong>, <strong>data returned</strong>, <strong>number of output rows</strong>, and worker
+timings with the native expression. Batching amortizes crossings but wide inputs
+can make a single pickle buffer expensive; pickle row/estimated-byte limits and
+Arrow record-batch limits are separate controls. A producer ahead of the worker
+can also grow the pass-through queue until it spills to executor-local disk.</p>
+<p>A user-function exception is returned to the executor as a Python error and
+fails that task attempt; an incompatible Arrow result schema can instead fail
+the JVM evaluator. Check the Python traceback or schema mismatch in the failed
+task&#39;s executor log. A repeatable bad input is not fixed by a task retry, and
+neither path silently substitutes <code>NULL</code> for a thrown exception.</p>
+<p><strong>Implementation:</strong> <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/python/BatchEvalPythonExec.scala#L209-L299">pickle encoding</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/python/BatchEvalPythonExec.scala#L130-L170">pickle runner and decoding</a> ·
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/python/ArrowEvalPythonExec.scala#L238-L275">Arrow evaluator and type check</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/python/ArrowEvalPythonExec.scala#L119-L168">columnar input eligibility</a> ·
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/python/PythonSQLMetrics.scala#L54-L78">Python SQL metrics</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/api/python/PythonRunner.scala#L1263-L1275">worker exception decoding</a>.</p>
+</main></html>

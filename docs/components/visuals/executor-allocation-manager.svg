@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="360" height="442" viewBox="0 0 360 442" role="img" aria-labelledby="flow-title" aria-describedby="flow-desc">
+<title id="flow-title">ExecutorAllocationManager: deciding how many executors to request: Flow at a glance</title>
+<desc id="flow-desc">1. Task counts: The allocation listener tracks running and pending tasks by resource profile. 2. Executor target: The manager can raise the target for sustained backlog or lower it as demand falls. 3. YARN handoff: The backend sends the desired totals to the application master, which requests containers.</desc>
+<style>
+@keyframes handoff {
+  0%, 18% { transform: translateY(0); }
+  40%, 58% { transform: translateY(144px); }
+  82%, 100% { transform: translateY(288px); }
+}
+@media (prefers-reduced-motion: no-preference) {
+  #focus { display: inline; animation: handoff 4.6s ease-in-out 1 both; }
+}
+@media (prefers-reduced-motion: reduce) { #focus { display: none; animation: none; } }
+</style>
+<rect x="1" y="1" width="358" height="440" rx="13" fill="#f2f7f6" stroke="#b8cbc8"/>
+<path d="M24 30 V318" fill="none" stroke="#577d7b" stroke-width="2"/>
+<g font-family="Arial, Helvetica, sans-serif">
+  <rect x="48" y="10" width="302" height="134" rx="9" fill="#fff" stroke="#a8bdbb"/>
+  <circle cx="24" cy="30" r="12" fill="#184d50"/>
+  <text x="24" y="36" text-anchor="middle" font-size="17" font-weight="700" fill="#fff">1</text>
+  <text font-size="19" font-weight="700" fill="#12383d"><tspan x="62" y="36">Task counts</tspan></text>
+  <text font-size="18" fill="#223a40"><tspan x="62" y="61">The allocation listener</tspan><tspan x="62" y="84">tracks running and</tspan><tspan x="62" y="107">pending tasks by resource</tspan><tspan x="62" y="130">profile.</tspan></text>
+  <rect x="48" y="154" width="302" height="134" rx="9" fill="#fff" stroke="#a8bdbb"/>
+  <circle cx="24" cy="174" r="12" fill="#184d50"/>
+  <text x="24" y="180" text-anchor="middle" font-size="17" font-weight="700" fill="#fff">2</text>
+  <text font-size="19" font-weight="700" fill="#12383d"><tspan x="62" y="180">Executor target</tspan></text>
+  <text font-size="18" fill="#223a40"><tspan x="62" y="205">The manager can raise</tspan><tspan x="62" y="228">the target for sustained</tspan><tspan x="62" y="251">backlog or lower it as</tspan><tspan x="62" y="274">demand falls.</tspan></text>
+  <rect x="48" y="298" width="302" height="134" rx="9" fill="#fff" stroke="#a8bdbb"/>
+  <circle cx="24" cy="318" r="12" fill="#184d50"/>
+  <text x="24" y="324" text-anchor="middle" font-size="17" font-weight="700" fill="#fff">3</text>
+  <text font-size="19" font-weight="700" fill="#12383d"><tspan x="62" y="324">YARN handoff</tspan></text>
+  <text font-size="18" fill="#223a40"><tspan x="62" y="349">The backend sends the</tspan><tspan x="62" y="372">desired totals to the</tspan><tspan x="62" y="395">application master, which</tspan><tspan x="62" y="418">requests containers.</tspan></text>
+</g>
+<g id="focus" display="none" aria-hidden="true">
+  <circle cx="24" cy="30" r="16" fill="none" stroke="#17484d" stroke-width="2"/>
+  <path d="M40 25 l6 5 -6 5 z" fill="#17484d"/>
+</g>
+</svg>

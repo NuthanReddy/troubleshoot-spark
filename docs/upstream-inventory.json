@@ -1,0 +1,410 @@
+{
+  "repo": "holdenk/spark-flowchart",
+  "rev": "4f046b70c9bf83f4e51b7381512c6a6c8480110e",
+  "pages": [
+    {
+      "section": "details",
+      "slug": "SchemaColumnConvertNotSupportedException",
+      "type": "article",
+      "blob": "8cd283608661aa96a2258db39f2ac90350e86218"
+    },
+    {
+      "section": "details",
+      "slug": "best-pratice-collect",
+      "type": "article",
+      "blob": "ba73d6be8a881ccf4a5c64c557bcd7779a995409"
+    },
+    {
+      "section": "details",
+      "slug": "big-broadcast-join",
+      "type": "article",
+      "blob": "01038a09da923e4bf02586d10a746a941579d9fc"
+    },
+    {
+      "section": "details",
+      "slug": "broadcast-with-disable",
+      "type": "article",
+      "blob": "7791dc1ab2cda54d4a3b69bddeb6e090c1ec2f13"
+    },
+    {
+      "section": "details",
+      "slug": "class-or-method-not-found",
+      "type": "article",
+      "blob": "343e9e9e6e1368278f14bd35c348449194befe6d"
+    },
+    {
+      "section": "details",
+      "slug": "container-oom",
+      "type": "article",
+      "blob": "36b7b7ac4c9002099defbf6f9e8e385a56431c2b"
+    },
+    {
+      "section": "details",
+      "slug": "correlated-column-not-allowed",
+      "type": "article",
+      "blob": "aff9c1ba722ec885dc82ef694ce61382ca28ae24"
+    },
+    {
+      "section": "details",
+      "slug": "driver-max-result-size",
+      "type": "overlapping",
+      "blob": "06794907dcc8855ae9b281dce8b2af655c2fbbb9"
+    },
+    {
+      "section": "details",
+      "slug": "error-driver-max-result-size",
+      "type": "article",
+      "blob": "3120d0583f99a8ff71c56c089f139397d93bf3ba"
+    },
+    {
+      "section": "details",
+      "slug": "error-driver-out-of-memory",
+      "type": "article",
+      "blob": "a773d97cc984db9f532aad8412b3966fbfdca13a"
+    },
+    {
+      "section": "details",
+      "slug": "error-driver-stack-overflow",
+      "type": "article",
+      "blob": "7f1c8bdc00693c97d1202ffed79a5d15a6decce7"
+    },
+    {
+      "section": "details",
+      "slug": "error-executor-out-of-disk",
+      "type": "article",
+      "blob": "9b5c7f44141235c0f86e4a77e15d46c9f3f0a972"
+    },
+    {
+      "section": "details",
+      "slug": "error-executor-out-of-memory",
+      "type": "article",
+      "blob": "8572cfe4a7719585c821bff0f7c16d011c34934b"
+    },
+    {
+      "section": "details",
+      "slug": "error-invalid-file",
+      "type": "article",
+      "blob": "0f4bf4383fac6fca53c349dc266aa6655154057b"
+    },
+    {
+      "section": "details",
+      "slug": "error-job",
+      "type": "routing",
+      "blob": "e7e12765f8aca4d26cb99d8a10395c767dc18281"
+    },
+    {
+      "section": "details",
+      "slug": "error-memory",
+      "type": "routing",
+      "blob": "279848e2ce00e557b00fbfe411a1b9355bad78b4"
+    },
+    {
+      "section": "details",
+      "slug": "error-other",
+      "type": "routing",
+      "blob": "6278197e72a1cd2291fb2db61e6cb89d5d35c792"
+    },
+    {
+      "section": "details",
+      "slug": "error-shuffle",
+      "type": "article",
+      "blob": "510fdd3f79b0e0bd7f7ddb6daab0c2491407370d"
+    },
+    {
+      "section": "details",
+      "slug": "error-sql-analysis",
+      "type": "article",
+      "blob": "dbbc8244c704766484114ca6a9b347c99d3828bb"
+    },
+    {
+      "section": "details",
+      "slug": "even_partitioning_still_slow",
+      "type": "article",
+      "blob": "7caec2f57322c6556f2f7e48eb88b7ae70728ff5"
+    },
+    {
+      "section": "details",
+      "slug": "failed-to-read-non-parquet-file",
+      "type": "article",
+      "blob": "0e501ad5768fe3dc811234bd3e59caecbc4a0006"
+    },
+    {
+      "section": "details",
+      "slug": "failure-executor-large-record",
+      "type": "article",
+      "blob": "0a3af8de232cfd7d23ffc10f11611f8e864b2fbf"
+    },
+    {
+      "section": "details",
+      "slug": "forced-computations",
+      "type": "article",
+      "blob": "1a018412786c4f0ed44ece4679f8ac6541effe57"
+    },
+    {
+      "section": "details",
+      "slug": "key-skew",
+      "type": "article",
+      "blob": "447509f8cbd337881113f3a5eb7a141bafc930d6"
+    },
+    {
+      "section": "details",
+      "slug": "max_serialized_task_size",
+      "type": "article",
+      "blob": "fd8ac5b88b868f2432d733297dabcd188cbc0252"
+    },
+    {
+      "section": "details",
+      "slug": "notenoughexecs",
+      "type": "heading only",
+      "blob": "83b091db4bead6bf5751254eaf81f1e408e9e3aa"
+    },
+    {
+      "section": "details",
+      "slug": "partial_aggregates",
+      "type": "article",
+      "blob": "02ab4aafe768d9ef436cbf6ae75108fe81641540"
+    },
+    {
+      "section": "details",
+      "slug": "pyudfoom",
+      "type": "article",
+      "blob": "ee9cfec2cc8bd472ec17432c13af4d39ad86fc45"
+    },
+    {
+      "section": "details",
+      "slug": "read-partition-issue",
+      "type": "article",
+      "blob": "fb602a2eb2d7eb4a59eff87e48194c39992702ee"
+    },
+    {
+      "section": "details",
+      "slug": "revise-bad_partitioning",
+      "type": "overlapping",
+      "blob": "3b6f189bd0a7582ccab6cbd863fabf1f79a42660"
+    },
+    {
+      "section": "details",
+      "slug": "revise-even_partitioning_still_slow",
+      "type": "overlapping",
+      "blob": "a43a4af58eda35278bbb4c964408057f0eb20aa9"
+    },
+    {
+      "section": "details",
+      "slug": "shuffle_exchange_loses_exec_reg",
+      "type": "article",
+      "blob": "37f28776ca9b26f9e48b918b75d6169f9dba272b"
+    },
+    {
+      "section": "details",
+      "slug": "shuffle_fetch_corrupted",
+      "type": "article",
+      "blob": "0f381d3924f6803bdd8fe0d84befe64f18adf402"
+    },
+    {
+      "section": "details",
+      "slug": "singlepartition",
+      "type": "article",
+      "blob": "56bd822e327a5c4614d6f145f084594872b2e942"
+    },
+    {
+      "section": "details",
+      "slug": "slow-executor",
+      "type": "article",
+      "blob": "7945897a8a1f0feceee0d76b599f5939d5561504"
+    },
+    {
+      "section": "details",
+      "slug": "slow-job-slow-cluster",
+      "type": "article",
+      "blob": "474a35cfaf3dadfbeceee4ee86e373cfdb5d3e73"
+    },
+    {
+      "section": "details",
+      "slug": "slow-job",
+      "type": "routing",
+      "blob": "7af7380f3bf7370386735f052b825dce015ea73c"
+    },
+    {
+      "section": "details",
+      "slug": "slow-map",
+      "type": "article",
+      "blob": "8f42258b71c947424c54197bade2bdb069f88ae1"
+    },
+    {
+      "section": "details",
+      "slug": "slow-partition_filter_pushdown",
+      "type": "article",
+      "blob": "d46e0f92d0a393c8942b6799af1d9b7989da3624"
+    },
+    {
+      "section": "details",
+      "slug": "slow-reduce",
+      "type": "article",
+      "blob": "747b72ceaf0aee3466f4a12a7fbb3b5c92cdea9a"
+    },
+    {
+      "section": "details",
+      "slug": "slow-regex-tips",
+      "type": "article",
+      "blob": "275898749fa50d34ea17def8a74bd750a55b663a"
+    },
+    {
+      "section": "details",
+      "slug": "slow-skewed-join",
+      "type": "article",
+      "blob": "ecac8efb3397648698a2645a8792019a5aa2b999"
+    },
+    {
+      "section": "details",
+      "slug": "slow-skewed-write",
+      "type": "article",
+      "blob": "8b3644e693352c4febb20cce2b2ff4271f2c6af2"
+    },
+    {
+      "section": "details",
+      "slug": "slow-stage",
+      "type": "article",
+      "blob": "0abc8447fe42294ae19bb628a0a6f92d62e7c45f"
+    },
+    {
+      "section": "details",
+      "slug": "slow-writes-s3",
+      "type": "article",
+      "blob": "2d43c788c5e66bc2aef584be0aef241a4a51a563"
+    },
+    {
+      "section": "details",
+      "slug": "slow-writes-too-many-files",
+      "type": "article",
+      "blob": "2ff3487313a508705696c8d19a1b72269cc3d59d"
+    },
+    {
+      "section": "details",
+      "slug": "slow-writes",
+      "type": "routing",
+      "blob": "c5bace6c264f49c45d914ec59f0bbbcd98c01560"
+    },
+    {
+      "section": "details",
+      "slug": "toobigdag",
+      "type": "article",
+      "blob": "6b5c743e055f3da19a13b9498d642fc6241b46d1"
+    },
+    {
+      "section": "details",
+      "slug": "toofew_tasks",
+      "type": "heading only",
+      "blob": "e33a513ad672722b2523a75740394eca9476a56f"
+    },
+    {
+      "section": "details",
+      "slug": "toolargejar",
+      "type": "article",
+      "blob": "15bd3b1914cbb42e58e7fa3f892bc16376686a94"
+    },
+    {
+      "section": "details",
+      "slug": "toomany_tasks",
+      "type": "heading only",
+      "blob": "2d608f2b56b234b9c3ce038950cc83a662b21a6d"
+    },
+    {
+      "section": "details",
+      "slug": "udfslow",
+      "type": "article",
+      "blob": "621f4c12bf5aefcd407a58bded621875f4c025b8"
+    },
+    {
+      "section": "details",
+      "slug": "write-fails",
+      "type": "article",
+      "blob": "4f62650aa36168f9a41e0f3333fa6c8827ae9652"
+    },
+    {
+      "section": "flowchart",
+      "slug": "error",
+      "type": "flowchart",
+      "blob": "bf1de72c39013960e16bfe8a7b6638cecf7a2761",
+      "nodes": [
+        "ContainerOOM",
+        "DriverMaxResultSize",
+        "DriverMemory",
+        "DriverMemoryError",
+        "Error",
+        "ExecutorDiskError",
+        "ExecutorMemory",
+        "ExecutorMemoryError",
+        "KyroBuffer",
+        "LARGERECORDS",
+        "LostShuffleFiles",
+        "MaxSerializeTask",
+        "MemoryError",
+        "NodeFailures",
+        "OtherError",
+        "SchemaColumnConvertNotSupportedException",
+        "Serialization",
+        "ShuffleError",
+        "ShuffleExchangeLosesExecReg",
+        "ShuffleFetchCorrupted",
+        "SqlAnalysisError",
+        "TooBigBroadcastJoin",
+        "TooLargeJar",
+        "WriteFails"
+      ]
+    },
+    {
+      "section": "flowchart",
+      "slug": "index",
+      "type": "flowchart",
+      "blob": "6afc188e048b31ec7741eff1f9aea59cef816f16",
+      "nodes": [
+        "A",
+        "B",
+        "C"
+      ]
+    },
+    {
+      "section": "flowchart",
+      "slug": "shared",
+      "type": "flowchart",
+      "blob": "feeabbd6564bc01b7f2da2a9c8e44a5303c710a1",
+      "nodes": [
+        "OHNOES"
+      ]
+    },
+    {
+      "section": "flowchart",
+      "slug": "slow",
+      "type": "flowchart",
+      "blob": "1352b256897ba80edcd4c181cdfb07bcd5247184",
+      "nodes": [
+        "FILTERNOTPUSHED",
+        "NOTENOUGHEXEC",
+        "PAGGS",
+        "READPARTITIONISSUES",
+        "S3COMMITTER",
+        "SHUFFLEPARTITIONISSUES",
+        "SLOWSTAGE",
+        "SLOWWRITESTOSTORAGE",
+        "SkewedAggregation",
+        "SkewedJoin",
+        "SkewedShuffleTasks",
+        "SkewedWrite",
+        "SlowCluster",
+        "SlowJob",
+        "SlowMap",
+        "SlowReduce",
+        "SlowStage",
+        "SpillToDisk",
+        "TOOBIGDAG",
+        "TOOFEW",
+        "TOOMANY",
+        "TOOMANYFILES",
+        "TooFewShuffleTasks",
+        "TooLargeJar",
+        "TooManyShuffleTasks",
+        "UDFSLOWNESS"
+      ]
+    }
+  ]
+}

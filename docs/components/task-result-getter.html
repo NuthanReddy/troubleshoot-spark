@@ -1,0 +1,76 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>TaskResultGetter: when the driver accepts a finished attempt · Troubleshoot Spark</title><link rel="stylesheet" href="../style.css"><main class="reader"><nav><a href=".././#map">Diagnostic map</a> · <a href="../guide.html">Lifecycle</a> · <a href="../scenarios.html">Cases</a> · <a href="../components/index.html">Components</a></nav><h1 id="taskresultgetter-when-the-driver-accepts-a-finished-attempt">TaskResultGetter: when the driver accepts a finished attempt</h1>
+<p><a href="index.html">component index</a> | <a href="../scenarios.html#17-collect-exceeds-the-driver-result-limit">Oversized <code>collect</code> scenario</a></p>
+<p><code>TaskResultGetter</code> is a <strong>driver JVM worker pool</strong> owned by <code>TaskSchedulerImpl</code>, not an RPC endpoint on the executor. Its inputs are the task set, attempt ID (TID), and serialized terminal payload. Its output is a scheduler callback carrying either a usable <code>DirectTaskResult</code> or a <code>TaskFailedReason</code>. It does not decide which partition to retry or collect rows into the Python driver.</p>
+<h2 id="flow-at-a-glance">Flow at a glance</h2>
+<ol>
+<li><strong>Executors</strong>: Store two 2 MiB results and send their block references.</li>
+<li><strong>Result getter</strong>: Fetch the first block under the 3 MiB limit.</li>
+<li><strong>Task set manager</strong>: Abort at 4 MiB without fetching the second block.</li>
+</ol>
+<blockquote>
+<p><strong>Key distinction:</strong> For <code>collect</code>, the driver counts the sizes of the indirect results, not the sizes of their block references.</p>
+</blockquote>
+<details>
+<summary>Show the animated flow</summary>
+
+<p><img src="visuals/task-result-getter.svg" alt="Two 2 MiB results fit individually, but the driver aborts the task set before fetching the second block."></p>
+</details>
+
+<h2 id="what-did-the-executor-actually-send">What did the executor actually send?</h2>
+<p>The <a href="task-attempt.html">task runner</a> serializes the returned value with <code>env.serializer</code>. It wraps the value bytes, accumulator updates and metric peaks in a <code>DirectTaskResult</code>, then serializes that envelope with the closure serializer. Let <strong>S</strong> be the <em>serialized envelope</em> size, <strong>D</strong> the smaller of <code>spark.task.maxDirectResultSize</code> and the <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/util/RpcUtils.scala#L55-L67">byte equivalent</a> of the MiB-valued <code>spark.rpc.message.maxSize</code>, and <strong>M</strong> <code>spark.driver.maxResultSize</code>. The executor tests these branches <strong>in order</strong>:</p>
+<table>
+<thead>
+<tr>
+<th>Condition</th>
+<th>What travels in <code>StatusUpdate(FINISHED)</code></th>
+<th>Where are the result bytes?</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>M &gt; 0</code> and <code>S &gt; M</code></td>
+<td><code>IndirectTaskResult(TaskResultBlockId(tid), S)</code></td>
+<td><strong>Dropped</strong>, not stored. The reference conveys the size so the driver can reject it without transferring it.</td>
+</tr>
+<tr>
+<td>Otherwise <code>S &gt; D</code></td>
+<td><code>IndirectTaskResult(TaskResultBlockId(tid), S)</code></td>
+<td>The executor stores the serialized direct envelope in its block manager at <code>MEMORY_AND_DISK_SER</code>.</td>
+</tr>
+<tr>
+<td>Otherwise</td>
+<td>The serialized <code>DirectTaskResult</code></td>
+<td>Inline in the status message; no task-result block fetch.</td>
+</tr>
+</tbody></table>
+<p>Switching to block storage changes the transport, not the result quota. Equality does not trip either <code>&gt;</code> comparison. Size limit <code>M = 0</code> disables the max-result-size checks; it does not make driver memory unlimited. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/executor/Executor.scala#L413-L421">Thresholds</a> / <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/executor/Executor.scala#L1005-L1052">Executor decision</a> / <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/TaskResult.scala#L32-L47">Envelope types</a></p>
+<h2 id="from-status-update-to-scheduler-callback">From status update to scheduler callback</h2>
+<ol>
+<li>The driver&#39;s scheduler backend forwards the status to <code>TaskSchedulerImpl</code> and releases the executor&#39;s charged resources on terminal status. Under its lock the scheduler finds the task set, cleans up running-task tracking and enqueues completion work. The slot can be reused <strong>before</strong> the result becomes available to the driver. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/cluster/CoarseGrainedSchedulerBackend.scala#L178-L196">Resource return</a> / <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/TaskSchedulerImpl.scala#L865-L889">Scheduler handoff</a></li>
+<li>A <code>task-result-getter</code> thread decodes the outer envelope. There are four daemon workers by default (<code>spark.resultGetter.threads</code>); each holds thread-local serializer instances for the envelope and the value. Blocking fetches and first-time value deserialization are done <strong>outside</strong> the scheduler lock. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/TaskResultGetter.scala#L33-L57">Pool and serializers</a></li>
+<li><strong>Direct:</strong> call <code>canFetchMoreResults</code> with the size of the serialized <em>value buffer</em>. If accepted, force <code>value()</code> now; later calls reuse the cached object. <strong>Indirect:</strong> check the <em>declared envelope size</em> first. If accepted, notify the scheduler that the task is getting its result, call <code>sparkEnv.blockManager.getRemoteBytes(blockId)</code>, deserialize the direct envelope and value, then ask the <a href="block-manager-master.html">block manager master</a> to remove the block. Getting-result time is driver bookkeeping, not a second executor task. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/TaskResultGetter.scala#L58-L106">Both paths</a> / <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/TaskResult.scala#L94-L112">Cached value</a></li>
+<li>The getter fills the result-size accumulator on the driver: the outer message size for direct results, or the advertised size for indirect results. It calls <code>scheduler.handleSuccessfulTask</code> under the scheduler&#39;s synchronization; the task set resolves competing attempts and notifies <code>DAGScheduler</code>. No result bytes have to be deserialized for the first time under that lock. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/TaskResultGetter.scala#L108-L129">Accounting and callback</a> / <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/TaskSchedulerImpl.scala#L956-L978">Scheduler synchronization</a> / <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/TaskSetManager.scala#L866-L914">Task-set completion</a></li>
+</ol>
+<h2 id="why-finished-can-still-fail">Why <code>FINISHED</code> can still fail</h2>
+<table>
+<thead>
+<tr>
+<th>Evidence</th>
+<th>Decision and owner</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>Total size of serialized results ... is bigger than spark.driver.maxResultSize</code></td>
+<td><code>TaskSetManager.canFetchMoreResults</code> adds each reported size under the scheduler lock. For a <strong>non-shuffle-map task set</strong>, a positive cap exceeded in aggregate aborts the set. The getter reports this attempt as killed and, for an indirect result, requests block removal without fetching. The aggregate guard excludes shuffle-map task sets; the executor&#39;s per-result drop above has no such exemption. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/TaskSetManager.scala#L801-L828">Budget check</a></td>
+</tr>
+<tr>
+<td><code>TaskResultLost</code></td>
+<td>The indirect result passed the budget check, but <code>getRemoteBytes</code> returned no block (for example, the executor disappeared between reporting and fetching). The getter calls <code>handleFailedTask</code> with the executor-reported state <code>FINISHED</code> <strong>and</strong> reason <code>TaskResultLost</code>. The scheduler can retry an eligible partition; this is not a missing shuffle-map output. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/TaskResultGetter.scala#L58-L106">Missing block</a> / <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/TaskSetManager.scala#L1139-L1165">Failure policy</a></td>
+</tr>
+<tr>
+<td>Exception while decoding a result or a failure</td>
+<td>A missing result class or other nonfatal error in the success path aborts the task set. For an already <code>FAILED</code>/<code>KILLED</code> attempt, the getter instead tries to decode the failure reason; even if that fails, it notifies the scheduler in <code>finally</code> with <code>UnknownReason</code> if necessary. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/TaskResultGetter.scala#L119-L177">Failure decoding</a></td>
+</tr>
+</tbody></table>
+<p>For example, suppose <strong>D = 1 MiB</strong>, <strong>M = 3 MiB</strong>, and two result-task envelopes are <strong>2 MiB each</strong>. Both attempts can finish and store their individual results. The driver&#39;s second size check brings the task set to <strong>4 MiB</strong> and aborts it; increasing only the RPC message limit would not fix it. To distinguish that case from block loss, compare the driver-side budget message with the executor&#39;s <code>bytes result sent via BlockManager</code> log for the TID.</p>
+<p><code>TaskSchedulerImpl</code> <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/TaskSchedulerImpl.scala#L243-L246">creates the getter</a> and <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/TaskSchedulerImpl.scala#L1018-L1031">stops it</a> with the scheduler. The same pool can asynchronously deliver partition-completion notifications; <code>stop()</code> calls <code>shutdownNow()</code>. It has no independent YARN lifecycle. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/TaskResultGetter.scala#L119-L177">Other work and shutdown</a></p>
+</main></html>

@@ -1,0 +1,94 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 796.5590000000001 495" width="796.5590000000001" height="495" style="--bg:#101d2e;--fg:#ecf3f8;--line:#839ab5;--accent:#93e3d1;background:var(--bg)">
+<style>
+  text { font-family: 'system-ui', system-ui, sans-serif; }
+  svg {
+    /* Derived from --bg and --fg (overridable via --line, --accent, etc.) */
+    --_text:          var(--fg);
+    --_text-sec:      var(--muted, color-mix(in srgb, var(--fg) 60%, var(--bg)));
+    --_text-muted:    var(--muted, color-mix(in srgb, var(--fg) 40%, var(--bg)));
+    --_text-faint:    color-mix(in srgb, var(--fg) 25%, var(--bg));
+    --_line:          var(--line, color-mix(in srgb, var(--fg) 50%, var(--bg)));
+    --_arrow:         var(--accent, color-mix(in srgb, var(--fg) 85%, var(--bg)));
+    --_node-fill:     var(--surface, color-mix(in srgb, var(--fg) 3%, var(--bg)));
+    --_node-stroke:   var(--border, color-mix(in srgb, var(--fg) 20%, var(--bg)));
+    --_group-fill:    var(--bg);
+    --_group-hdr:     color-mix(in srgb, var(--fg) 5%, var(--bg));
+    --_inner-stroke:  color-mix(in srgb, var(--fg) 12%, var(--bg));
+    --_key-badge:     color-mix(in srgb, var(--fg) 10%, var(--bg));
+  }
+</style>
+<defs>
+  <marker id="seq-arrow" markerWidth="8" markerHeight="5" refX="8" refY="2.5" orient="auto-start-reverse">
+    <polygon points="0 0, 8 2.5, 0 5" fill="var(--_arrow)" />
+  </marker>
+  <marker id="seq-arrow-open" markerWidth="8" markerHeight="5" refX="8" refY="2.5" orient="auto-start-reverse">
+    <polyline points="0 0, 8 2.5, 0 5" fill="none" stroke="var(--_arrow)" stroke-width="1" />
+  </marker>
+</defs>
+<line class="lifeline" data-actor="W" x1="115.14699999999999" y1="70" x2="115.14699999999999" y2="465" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" />
+<line class="lifeline" data-actor="N" x1="289.13199999999995" y1="70" x2="289.13199999999995" y2="465" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" />
+<line class="lifeline" data-actor="A" x1="429.40149999999994" y1="70" x2="429.40149999999994" y2="465" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" />
+<line class="lifeline" data-actor="B" x1="572.2645" y1="70" x2="572.2645" y2="465" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" />
+<line class="lifeline" data-actor="C" x1="715.1275" y1="70" x2="715.1275" y2="465" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" />
+<g class="message" data-from="W" data-to="N" data-label="addBlock for output part" data-line-style="solid" data-arrow-head="filled" data-self="false">
+  <line x1="115.14699999999999" y1="90" x2="289.13199999999995" y2="90" stroke="var(--_line)" stroke-width="1" marker-end="url(#seq-arrow)" />
+  <text x="202.13949999999997" y="80" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">addBlock for output part</text>
+</g>
+<g class="message" data-from="N" data-to="W" data-label="LocatedBlock with A, B, C" data-line-style="dashed" data-arrow-head="filled" data-self="false">
+  <line x1="289.13199999999995" y1="130" x2="115.14699999999999" y2="130" stroke="var(--_line)" stroke-width="1" stroke-dasharray="6 4" marker-end="url(#seq-arrow)" />
+  <text x="202.13949999999997" y="120" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">LocatedBlock with A, B, C</text>
+</g>
+<g class="message" data-from="W" data-to="A" data-label="WRITE_BLOCK and packet k" data-line-style="solid" data-arrow-head="filled" data-self="false">
+  <line x1="115.14699999999999" y1="170" x2="429.40149999999994" y2="170" stroke="var(--_line)" stroke-width="1" marker-end="url(#seq-arrow)" />
+  <text x="272.27424999999994" y="160" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">WRITE_BLOCK and packet k</text>
+</g>
+<g class="message" data-from="A" data-to="B" data-label="Forward packet k" data-line-style="solid" data-arrow-head="filled" data-self="false">
+  <line x1="429.40149999999994" y1="210" x2="572.2645" y2="210" stroke="var(--_line)" stroke-width="1" marker-end="url(#seq-arrow)" />
+  <text x="500.83299999999997" y="200" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">Forward packet k</text>
+</g>
+<g class="message" data-from="B" data-to="C" data-label="Forward packet k" data-line-style="solid" data-arrow-head="filled" data-self="false">
+  <line x1="572.2645" y1="250" x2="715.1275" y2="250" stroke="var(--_line)" stroke-width="1" marker-end="url(#seq-arrow)" />
+  <text x="643.696" y="240" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">Forward packet k</text>
+</g>
+<g class="message" data-from="C" data-to="B" data-label="ACK k" data-line-style="dashed" data-arrow-head="filled" data-self="false">
+  <line x1="715.1275" y1="290" x2="572.2645" y2="290" stroke="var(--_line)" stroke-width="1" stroke-dasharray="6 4" marker-end="url(#seq-arrow)" />
+  <text x="643.696" y="280" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">ACK k</text>
+</g>
+<g class="message" data-from="B" data-to="A" data-label="ACK k with downstream status" data-line-style="dashed" data-arrow-head="filled" data-self="false">
+  <line x1="572.2645" y1="330" x2="429.40149999999994" y2="330" stroke="var(--_line)" stroke-width="1" stroke-dasharray="6 4" marker-end="url(#seq-arrow)" />
+  <text x="500.83299999999997" y="320" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">ACK k with downstream status</text>
+</g>
+<g class="message" data-from="A" data-to="W" data-label="ACK k with pipeline statuses" data-line-style="dashed" data-arrow-head="filled" data-self="false">
+  <line x1="429.40149999999994" y1="370" x2="115.14699999999999" y2="370" stroke="var(--_line)" stroke-width="1" stroke-dasharray="6 4" marker-end="url(#seq-arrow)" />
+  <text x="272.27424999999994" y="360" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">ACK k with pipeline statuses</text>
+</g>
+<g class="message" data-from="W" data-to="N" data-label="complete file after the last block" data-line-style="solid" data-arrow-head="filled" data-self="false">
+  <line x1="115.14699999999999" y1="425" x2="289.13199999999995" y2="425" stroke="var(--_line)" stroke-width="1" marker-end="url(#seq-arrow)" />
+  <text x="202.13949999999997" y="415" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">complete file after the last block</text>
+</g>
+<g class="note" data-position="over" data-actors="A,C">
+  <polygon points="437.9665,378 700.5625,378 706.5625,384 706.5625,401 437.9665,401" fill="var(--bg)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <polygon points="700.5625,378 706.5625,384 700.5625,384" fill="var(--_inner-stroke)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="572.2645" y="389.5" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">Each stores a replica and reports it to the NameNode</text>
+</g>
+<g class="actor" data-id="W" data-label="Executor's HDFS client" data-type="participant">
+  <rect x="30" y="30" width="170.29399999999998" height="40" rx="4" ry="4" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <text x="115.14699999999999" y="50" font-size="13" text-anchor="middle" font-weight="500" fill="var(--_text)" dy="4.55">Executor&#39;s HDFS client</text>
+</g>
+<g class="actor" data-id="N" data-label="NameNode" data-type="participant">
+  <rect x="240.29399999999995" y="30" width="97.676" height="40" rx="4" ry="4" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <text x="289.13199999999995" y="50" font-size="13" text-anchor="middle" font-weight="500" fill="var(--_text)" dy="4.55">NameNode</text>
+</g>
+<g class="actor" data-id="A" data-label="DataNode A" data-type="participant">
+  <rect x="377.96999999999997" y="30" width="102.86299999999999" height="40" rx="4" ry="4" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <text x="429.40149999999994" y="50" font-size="13" text-anchor="middle" font-weight="500" fill="var(--_text)" dy="4.55">DataNode A</text>
+</g>
+<g class="actor" data-id="B" data-label="DataNode B" data-type="participant">
+  <rect x="520.833" y="30" width="102.86299999999999" height="40" rx="4" ry="4" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <text x="572.2645" y="50" font-size="13" text-anchor="middle" font-weight="500" fill="var(--_text)" dy="4.55">DataNode B</text>
+</g>
+<g class="actor" data-id="C" data-label="DataNode C" data-type="participant">
+  <rect x="663.696" y="30" width="102.86299999999999" height="40" rx="4" ry="4" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <text x="715.1275" y="50" font-size="13" text-anchor="middle" font-weight="500" fill="var(--_text)" dy="4.55">DataNode C</text>
+</g>
+</svg>

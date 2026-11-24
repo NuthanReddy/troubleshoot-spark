@@ -1,0 +1,98 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 761.1410000000001 580" width="761.1410000000001" height="580" style="--bg:#101d2e;--fg:#ecf3f8;--line:#839ab5;--accent:#93e3d1;background:var(--bg)">
+<style>
+  text { font-family: 'system-ui', system-ui, sans-serif; }
+  svg {
+    /* Derived from --bg and --fg (overridable via --line, --accent, etc.) */
+    --_text:          var(--fg);
+    --_text-sec:      var(--muted, color-mix(in srgb, var(--fg) 60%, var(--bg)));
+    --_text-muted:    var(--muted, color-mix(in srgb, var(--fg) 40%, var(--bg)));
+    --_text-faint:    color-mix(in srgb, var(--fg) 25%, var(--bg));
+    --_line:          var(--line, color-mix(in srgb, var(--fg) 50%, var(--bg)));
+    --_arrow:         var(--accent, color-mix(in srgb, var(--fg) 85%, var(--bg)));
+    --_node-fill:     var(--surface, color-mix(in srgb, var(--fg) 3%, var(--bg)));
+    --_node-stroke:   var(--border, color-mix(in srgb, var(--fg) 20%, var(--bg)));
+    --_group-fill:    var(--bg);
+    --_group-hdr:     color-mix(in srgb, var(--fg) 5%, var(--bg));
+    --_inner-stroke:  color-mix(in srgb, var(--fg) 12%, var(--bg));
+    --_key-badge:     color-mix(in srgb, var(--fg) 10%, var(--bg));
+  }
+</style>
+<defs>
+  <marker id="seq-arrow" markerWidth="8" markerHeight="5" refX="8" refY="2.5" orient="auto-start-reverse">
+    <polygon points="0 0, 8 2.5, 0 5" fill="var(--_arrow)" />
+  </marker>
+  <marker id="seq-arrow-open" markerWidth="8" markerHeight="5" refX="8" refY="2.5" orient="auto-start-reverse">
+    <polyline points="0 0, 8 2.5, 0 5" fill="none" stroke="var(--_arrow)" stroke-width="1" />
+  </marker>
+</defs>
+<line class="lifeline" data-actor="N" x1="108.47800000000001" y1="70" x2="108.47800000000001" y2="550" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" />
+<line class="lifeline" data-actor="B" x1="316.9195" y1="70" x2="316.9195" y2="550" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" />
+<line class="lifeline" data-actor="D" x1="502.0195" y1="70" x2="502.0195" y2="550" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" />
+<line class="lifeline" data-actor="E" x1="664.1485" y1="70" x2="664.1485" y2="550" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" />
+<g class="message" data-from="N" data-to="B" data-label="Start JVM with driver URL and executor ID" data-line-style="solid" data-arrow-head="filled" data-self="false">
+  <line x1="108.47800000000001" y1="90" x2="316.9195" y2="90" stroke="var(--_line)" stroke-width="1" marker-end="url(#seq-arrow)" />
+  <text x="212.69875000000002" y="80" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">Start JVM with driver URL and executor ID</text>
+</g>
+<g class="message" data-from="B" data-to="D" data-label="RetrieveSparkAppConfig(resourceProfileId) via temporary RpcEnv" data-line-style="solid" data-arrow-head="filled" data-self="false">
+  <line x1="316.9195" y1="130" x2="502.0195" y2="130" stroke="var(--_line)" stroke-width="1" marker-end="url(#seq-arrow)" />
+  <text x="409.46950000000004" y="120" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">RetrieveSparkAppConfig(resourceProfileId) via temporary RpcEnv</text>
+</g>
+<g class="message" data-from="D" data-to="B" data-label="SparkAppConfig" data-line-style="dashed" data-arrow-head="filled" data-self="false">
+  <line x1="502.0195" y1="170" x2="316.9195" y2="170" stroke="var(--_line)" stroke-width="1" stroke-dasharray="6 4" marker-end="url(#seq-arrow)" />
+  <text x="409.46950000000004" y="160" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">SparkAppConfig</text>
+</g>
+<g class="message" data-from="B" data-to="D" data-label="RegisterExecutor(id, endpoint ref, host, cores, resources, ...)" data-line-style="solid" data-arrow-head="filled" data-self="false">
+  <line x1="316.9195" y1="210" x2="502.0195" y2="210" stroke="var(--_line)" stroke-width="1" marker-end="url(#seq-arrow)" />
+  <text x="409.46950000000004" y="200" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">RegisterExecutor(id, endpoint ref, host, cores, resources, ...)</text>
+</g>
+<g class="message" data-from="D" data-to="B" data-label="true" data-line-style="dashed" data-arrow-head="filled" data-self="false">
+  <line x1="502.0195" y1="265" x2="316.9195" y2="265" stroke="var(--_line)" stroke-width="1" stroke-dasharray="6 4" marker-end="url(#seq-arrow)" />
+  <text x="409.46950000000004" y="255" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">true</text>
+</g>
+<g class="message" data-from="B" data-to="B" data-label="RegisteredExecutor (local message)" data-line-style="solid" data-arrow-head="filled" data-self="true">
+  <polyline points="316.9195,305 346.9195,305 346.9195,325 316.9195,325" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#seq-arrow)" />
+  <text x="354.9195" y="315" font-size="11" text-anchor="start" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">RegisteredExecutor (local message)</text>
+</g>
+<g class="message" data-from="B" data-to="E" data-label="Construct Executor in this JVM" data-line-style="solid" data-arrow-head="filled" data-self="false">
+  <line x1="316.9195" y1="375" x2="664.1485" y2="375" stroke="var(--_line)" stroke-width="1" marker-end="url(#seq-arrow)" />
+  <text x="490.534" y="365" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">Construct Executor in this JVM</text>
+</g>
+<g class="message" data-from="B" data-to="D" data-label="LaunchedExecutor(id)" data-line-style="solid" data-arrow-head="filled" data-self="false">
+  <line x1="316.9195" y1="415" x2="502.0195" y2="415" stroke="var(--_line)" stroke-width="1" marker-end="url(#seq-arrow)" />
+  <text x="409.46950000000004" y="405" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">LaunchedExecutor(id)</text>
+</g>
+<g class="message" data-from="D" data-to="B" data-label="LaunchTask(encoded TaskDescription)" data-line-style="solid" data-arrow-head="filled" data-self="false">
+  <line x1="502.0195" y1="470" x2="316.9195" y2="470" stroke="var(--_line)" stroke-width="1" marker-end="url(#seq-arrow)" />
+  <text x="409.46950000000004" y="460" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">LaunchTask(encoded TaskDescription)</text>
+</g>
+<g class="message" data-from="B" data-to="E" data-label="launchTask(backend, description)" data-line-style="solid" data-arrow-head="filled" data-self="false">
+  <line x1="316.9195" y1="510" x2="664.1485" y2="510" stroke="var(--_line)" stroke-width="1" marker-end="url(#seq-arrow)" />
+  <text x="490.534" y="500" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">launchTask(backend, description)</text>
+</g>
+<g class="note" data-position="over" data-actors="D">
+  <polygon points="401.57949999999994,218 596.4594999999999,218 602.4594999999999,224 602.4594999999999,241 401.57949999999994,241" fill="var(--bg)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <polygon points="596.4594999999999,218 602.4594999999999,224 596.4594999999999,224" fill="var(--_inner-stroke)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="502.0195" y="229.5" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">Record executor with zero free cores</text>
+</g>
+<g class="note" data-position="over" data-actors="D">
+  <polygon points="405.4405,423 592.5985000000001,423 598.5985000000001,429 598.5985000000001,446 405.4405,446" fill="var(--bg)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <polygon points="592.5985000000001,423 598.5985000000001,429 592.5985000000001,429" fill="var(--_inner-stroke)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="502.0195" y="434.5" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">Make cores available and offer them</text>
+</g>
+<g class="actor" data-id="N" data-label="YARN NodeManager" data-type="participant">
+  <rect x="30" y="30" width="156.95600000000002" height="40" rx="4" ry="4" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <text x="108.47800000000001" y="50" font-size="13" text-anchor="middle" font-weight="500" fill="var(--_text)" dy="4.55">YARN NodeManager</text>
+</g>
+<g class="actor" data-id="B" data-label="Executor JVM / backend" data-type="participant">
+  <rect x="226.95600000000002" y="30" width="179.927" height="40" rx="4" ry="4" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <text x="316.9195" y="50" font-size="13" text-anchor="middle" font-weight="500" fill="var(--_text)" dy="4.55">Executor JVM / backend</text>
+</g>
+<g class="actor" data-id="D" data-label="Spark driver" data-type="participant">
+  <rect x="446.883" y="30" width="110.273" height="40" rx="4" ry="4" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <text x="502.0195" y="50" font-size="13" text-anchor="middle" font-weight="500" fill="var(--_text)" dy="4.55">Spark driver</text>
+</g>
+<g class="actor" data-id="E" data-label="Executor runtime" data-type="participant">
+  <rect x="597.156" y="30" width="133.985" height="40" rx="4" ry="4" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <text x="664.1485" y="50" font-size="13" text-anchor="middle" font-weight="500" fill="var(--_text)" dy="4.55">Executor runtime</text>
+</g>
+</svg>

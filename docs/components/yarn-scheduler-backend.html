@@ -1,0 +1,163 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>YarnSchedulerBackend: the driver's adapter to the ApplicationMaster · Troubleshoot Spark</title><link rel="stylesheet" href="../style.css"><main class="reader"><nav><a href=".././#map">Diagnostic map</a> · <a href="../guide.html">Lifecycle</a> · <a href="../scenarios.html">Cases</a> · <a href="../components/index.html">Components</a></nav><h1 id="yarnschedulerbackend-the-driver39s-adapter-to-the-applicationmaster">YarnSchedulerBackend: the driver&#39;s adapter to the ApplicationMaster</h1>
+<p><a href="index.html">component index</a> · Driver JVM, AM-facing endpoint · Apache Spark <code>dada2a6</code></p>
+<h2 id="overview">Overview</h2>
+<p><code>YarnSchedulerBackend</code> communicates <strong>how many executors Spark wants</strong> and
+<strong>why a particular executor disappeared</strong>. It is not the AM&#39;s <a href="yarn-allocator.html">YarnAllocator</a>.
+The driver sends Spark RPC messages to the <a href="application-master.html">ApplicationMaster</a>
+(AM); the allocator translates demand into YARN container requests and receives
+grants from the <a href="resource-manager.html">ResourceManager</a> (RM). Once an executor registers, the inherited
+<a href="driver-scheduler-backend.html">driver scheduler backend</a> handles its free cores
+and task launches without routing each task through the AM.</p>
+<h2 id="flow-at-a-glance">Flow at a glance</h2>
+<ol>
+<li><strong>Driver backend</strong>: Stops offering executor 3 and asks the AM why it disconnected.</li>
+<li><strong>ApplicationMaster</strong>: Checks the container&#39;s exit status and reports YARN preemption.</li>
+<li><strong>Task set manager</strong>: Can retry the interrupted task without counting it against the failure limit.</li>
+</ol>
+<blockquote>
+<p><strong>Watch for:</strong> A disconnect stops new offers immediately; it does not tell you why the executor disappeared.</p>
+</blockquote>
+<details>
+<summary>Show the animated flow</summary>
+
+<p><img src="visuals/yarn-scheduler-backend.svg" alt="Executor 3 stops receiving offers before the ApplicationMaster confirms its container was preempted"></p>
+</details>
+
+<h2 id="requirements-analysis">Requirements analysis</h2>
+<p>The same task-scheduling code must work with a driver inside the AM container
+(cluster mode) or outside it (client mode). Express demand as a <strong>target per
+resource profile</strong>, not a stream of increments that could double-count pending
+executors. Separate a request acknowledgement from a grant, and a broken network
+connection from an application-caused executor failure.
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/cluster/CoarseGrainedSchedulerBackend.scala#L1009-L1055">Target contract</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/deploy/yarn/ApplicationMaster.scala#L831-L877">AM request handler</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/scheduler/cluster/YarnSchedulerBackend.scala#L274-L328">loss inquiry</a>.</p>
+<h2 id="component-architecture-and-lifetime">Component architecture and lifetime</h2>
+<table>
+<thead>
+<tr>
+<th>Deploy mode</th>
+<th>Who constructs, starts and stops the backend</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Cluster</td>
+<td><code>YarnClusterManager</code> creates <code>YarnClusterSchedulerBackend</code>. On <code>start</code>, it binds the AM&#39;s YARN application and attempt IDs, starts the base backend, and sets the initial expected executor count. Its <code>stop(exitCode)</code> signals the AM, then calls common backend shutdown. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/scheduler/cluster/YarnClusterManager.scala#L26-L55">Factory</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/scheduler/cluster/YarnClusterSchedulerBackend.scala#L25-L42">cluster lifecycle</a></td>
+</tr>
+<tr>
+<td>Client</td>
+<td>The same factory creates <code>YarnClientSchedulerBackend</code> in the submitting driver. Its <code>start</code> starts the base, builds the driver host:port argument, submits the YARN application via <code>Client</code>, binds its application ID (no backend attempt ID), waits for the application to run, and starts a monitor. Unexpected application exit can stop the context. Normal stop signals the AM, stops the monitor and backend, then closes the client. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/scheduler/cluster/YarnClientSchedulerBackend.scala#L45-L75">Startup</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/scheduler/cluster/YarnClientSchedulerBackend.scala#L114-L150">monitor</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/scheduler/cluster/YarnClientSchedulerBackend.scala#L174-L193">stop</a></td>
+</tr>
+</tbody></table>
+<p><code>TaskSchedulerImpl</code> calls <code>backend.start()</code>/<code>backend.stop(exitCode)</code>. The common
+YARN constructor registers its <code>YarnSchedulerEndpoint</code> (<code>YarnScheduler</code>) in the
+driver <code>RpcEnv</code>; separately the inherited executor-facing endpoint is a
+<code>YarnDriverEndpoint</code> (<code>CoarseGrainedScheduler</code>). At AM startup,
+<code>AMEndpoint.onStart</code> sends <code>RegisterClusterManager(self)</code> to <code>YarnScheduler</code>.
+Common shutdown requests empty executor targets to avoid replacements, then
+invokes the coarse-grained shutdown; a <code>finally</code> sets the stopped flag.
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/TaskSchedulerImpl.scala#L284-L297">Driver calls</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/TaskSchedulerImpl.scala#L1018-L1028">shutdown caller</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/scheduler/cluster/YarnSchedulerBackend.scala#L46-L83">adapter state</a> ·
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/deploy/yarn/ApplicationMaster.scala#L810-L828">AM registration</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/scheduler/cluster/YarnSchedulerBackend.scala#L102-L120">shared shutdown</a>.</p>
+<h2 id="data-models-and-concurrency">Data models and concurrency</h2>
+<table>
+<thead>
+<tr>
+<th>Value</th>
+<th>Owner and interpretation</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>appId</code>, optional <code>attemptId</code>, <code>amEndpoint: Option[RpcEndpointRef]</code></td>
+<td>Driver-side YARN identity and current AM route. The cluster-mode attempt string is a YARN attempt counter, <strong>not</strong> a stage or task attempt. Client mode can have a live YARN AM without setting this driver&#39;s <code>attemptId</code>.</td>
+</tr>
+<tr>
+<td><code>totalExpectedExecutors</code>, <code>totalRegisteredExecutors</code></td>
+<td>Initial expectation and inherited registration count. Startup readiness is <code>registered &gt;= expected * minRegisteredRatio</code> (YARN default <code>0.8</code>) <strong>or</strong> expiry of the base maximum wait. With five expected and no override, four registrations meet the ratio; this says nothing about four free task slots.</td>
+</tr>
+<tr>
+<td><code>Map[ResourceProfile, Int]</code> plus locality and exclusions</td>
+<td>Desired executor totals, counts of locality-aware tasks by profile, preferred host counts by profile, and excluded nodes go to the AM. The allocator, not the driver endpoint, owns <code>executorId ↔ containerId</code> and pending/running/starting container accounting.</td>
+</tr>
+</tbody></table>
+<p>The AM-facing endpoint is a <code>ThreadSafeRpcEndpoint</code>: its message handlers run
+serially, but a forwarded <code>ask</code> completes asynchronously. The driver returns
+the AM&#39;s Boolean or failure through the original <code>RpcCallContext</code>; it does
+not hold that handler waiting for a container to be launched. The outer
+<code>requestTotalExecutors</code> API does wait for the acknowledgement after leaving
+its synchronized update. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/scheduler/cluster/YarnSchedulerBackend.scala#L122-L156">Identity and request fields</a> ·
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/scheduler/cluster/YarnSchedulerBackend.scala#L175-L179">readiness tests</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/cluster/CoarseGrainedSchedulerBackend.scala#L787-L800">timeout</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/scheduler/cluster/YarnSchedulerBackend.scala#L366-L409">RPC forwarding</a> ·
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/cluster/CoarseGrainedSchedulerBackend.scala#L1009-L1055">target publication</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/deploy/yarn/YarnAllocator.scala#L774-L836">container identity</a>.</p>
+<h2 id="design-patterns-used">Design patterns used</h2>
+<p><strong>Adapter and proxy (structural).</strong> <code>doRequestTotalExecutors</code> adapts the
+cluster-neutral backend contract to Spark&#39;s <code>RequestExecutors</code> message, removing
+excluded hosts from preferences. <code>YarnSchedulerEndpoint</code> proxies the request
+to the registered AM ref. This keeps Hadoop&#39;s allocation protocol out of
+<a href="task-scheduler.html">TaskSchedulerImpl</a> and allows the AM ref to change across
+attempts; unlike a direct call, it has an explicit &quot;no AM registered&quot; case,
+timeouts, and replies that do not prove the work is finished.
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/scheduler/cluster/YarnSchedulerBackend.scala#L146-L175">Request construction</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/scheduler/cluster/YarnSchedulerBackend.scala#L366-L409">forwarding and errors</a>.</p>
+<h2 id="apiinterface-definitions">API/interface definitions</h2>
+<table>
+<thead>
+<tr>
+<th>Caller and message</th>
+<th>Response or next action</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><a href="executor-allocation-manager.html">ExecutorAllocationManager</a> → <code>requestTotalExecutors(profileIdToTotal, localityCounts, hostCounts)</code></td>
+<td>Base backend resolves profile IDs and publishes totals. YARN sends <code>RequestExecutors</code> via the driver endpoint named <code>YarnScheduler</code> to the AM. A ready allocator updating or retaining its target yields <code>true</code>; no registered AM or no ready allocator yields <code>false</code>. A failed ask to a registered AM is propagated. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/ExecutorAllocationManager.scala#L558-L579">Caller</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/scheduler/cluster/YarnSchedulerBackend.scala#L146-L175">YARN request</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/deploy/yarn/ApplicationMaster.scala#L831-L877">AM side</a></td>
+</tr>
+<tr>
+<td>Driver → <code>doKillExecutors(Seq[executorId])</code></td>
+<td>Forwards <code>KillExecutors</code> to the AM; allocator maps IDs to containers for release. This is not a <code>KillTask(TID, ...)</code>. In this revision the AM&#39;s kill handler replies <code>true</code> even if it only warned that the allocator was not ready: it is not proof of release. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/scheduler/cluster/YarnSchedulerBackend.scala#L366-L409">Forwarder</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/deploy/yarn/ApplicationMaster.scala#L831-L877">AM handler</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/deploy/yarn/YarnAllocator.scala#L385-L431">allocator release</a></td>
+</tr>
+<tr>
+<td>AM → <code>RegisterClusterManager(amRef)</code> / driver → AM <code>Shutdown(exitCode)</code></td>
+<td>Registration installs the AM ref and calls <code>reset()</code>. Shutdown marks the AM/allocator as shutting down; it is distinct from executor-facing <code>StopExecutor</code>. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/scheduler/cluster/YarnSchedulerBackend.scala#L330-L359">Driver receive/send</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/deploy/yarn/ApplicationMaster.scala#L831-L877">AM receive</a></td>
+</tr>
+<tr>
+<td>Executor disconnect at <code>YarnDriverEndpoint</code> → AM <code>GetExecutorLossReason(executorId)</code></td>
+<td>Disables offers for that executor, obtains the detailed reason asynchronously if possible, and posts <code>RemoveExecutor(id, reason)</code> to the executor-facing driver endpoint. The AM can also send <code>RemoveExecutor</code> unsolicited. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/scheduler/cluster/YarnSchedulerBackend.scala#L274-L328">Disconnect</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/scheduler/cluster/YarnSchedulerBackend.scala#L330-L359">remove forwarding</a></td>
+</tr>
+</tbody></table>
+<h2 id="implementation-notes-a-target-of-five-not-five-more">Implementation notes: a target of five, not five more</h2>
+<ol>
+<li>Suppose the driver sends a target of <strong>five</strong> for one resource profile.
+The AM applies the target and can wake its allocation loop before replying;
+the Boolean is an acknowledgement of demand. Sending the same target again
+does not add five more executors. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/scheduler/cluster/YarnSchedulerBackend.scala#L146-L175">Target preparation</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/deploy/yarn/ApplicationMaster.scala#L831-L877">AM reply</a>.</li>
+<li>If the allocator has <strong>two running, one starting and one pending request</strong>,
+its deficit is <code>5 - 2 - 1 - 1 = 1</code>. It prepares the missing request and its
+<code>allocate()</code> call to the RM returns whatever containers YARN actually grants.
+Capacity, locality and timing need not produce a grant on that call.
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/deploy/yarn/YarnAllocator.scala#L498-L530">Deficit calculation</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/deploy/yarn/YarnAllocator.scala#L439-L467">allocation heartbeat</a>.</li>
+<li>An allocated executor container is launched on its node. The Spark executor
+must still register and send <code>LaunchedExecutor</code> to the
+<a href="driver-scheduler-backend.html">executor-facing endpoint</a> before its CPUs
+become available for task offers. A stage&#39;s missing shuffle parent or a
+task&#39;s locality wait is unaffected by the acknowledgement in step 1.
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/deploy/yarn/YarnAllocator.scala#L774-L836">Container launch and association</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/cluster/CoarseGrainedSchedulerBackend.scala#L247-L252">Spark-side launch acknowledgement</a>.</li>
+</ol>
+<p><strong>Loss, late replies and AM replacement.</strong> If executor <code>3</code> disconnects, the
+driver stops offering it with <code>LossReasonPending</code>. The AM can hold the
+loss-reason request until container completion, or return a previously stored
+reason. A YARN preemption is classified as not caused by the application; the
+<a href="task-set-manager.html">task-set manager</a> can retry an ordinary running task
+without charging that event to its failure limit. A missing AM or failed/timed
+out inquiry instead produces <code>ExecutorProcessLost</code>; a disconnect alone does
+not establish preemption. An AM disconnect clears the matching AM ref. On
+registration/re-registration, reset removes lingering executors and resets the
+optional allocation manager (the base handles held executor targets specially).
+This repairs driver routing, not Python or job state after a dead driver.
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/scheduler/cluster/YarnSchedulerBackend.scala#L274-L328">Pending/failed inquiry</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/deploy/yarn/YarnAllocator.scala#L958-L1003">AM-side race</a> ·
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/deploy/yarn/YarnAllocator.scala#L876-L893">preemption classification</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/TaskSetManager.scala#L1284-L1302">task accounting</a> ·
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/scheduler/cluster/YarnSchedulerBackend.scala#L366-L409">AM ref removal</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/scheduler/cluster/YarnSchedulerBackend.scala#L251-L264">reset</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/cluster/CoarseGrainedSchedulerBackend.scala#L734-L758">stale executors</a>.</p>
+<h2 id="scalability-and-performance-considerations">Scalability and performance considerations</h2>
+<p>Requests summarize demand per resource profile instead of making an RM request
+per task. AM/RM allocation and executor startup introduce delay that faster
+driver offer rounds cannot eliminate. <strong>Diagnostic:</strong> the driver warning
+<code>Attempted to request executors before the AM has registered!</code> means the
+driver had no AM route, not that a YARN queue rejected a container. If the
+request was acknowledged, compare the AM&#39;s per-profile target/pending/starting/
+running counts with executor registrations before attributing the delay to
+task placement. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/scheduler/cluster/YarnSchedulerBackend.scala#L366-L409">No-AM branch</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/deploy/yarn/YarnAllocator.scala#L498-L530">allocator counts and request log</a>.</p>
+</main></html>

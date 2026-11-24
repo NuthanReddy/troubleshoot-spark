@@ -1,0 +1,78 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SparkContext: the application and job-submission boundary · Troubleshoot Spark</title><link rel="stylesheet" href="../style.css"><main class="reader"><nav><a href=".././#map">Diagnostic map</a> · <a href="../guide.html">Lifecycle</a> · <a href="../scenarios.html">Cases</a> · <a href="../components/index.html">Components</a></nav><h1 id="sparkcontext-the-application-and-job-submission-boundary">SparkContext: the application and job-submission boundary</h1>
+<p><a href="index.html">component index</a></p>
+<p><code>sc = spark.sparkContext</code> refers to the application, not a SQL namespace or an executor.
+In classic PySpark, Python <code>SparkContext</code> holds <code>_jsc</code>, a <a href="py4j-gateway.html">Py4J</a> handle
+to <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/api/java/JavaSparkContext.scala#L48-L60"><code>JavaSparkContext</code></a>, which wraps the Scala <code>SparkContext</code>. The Scala object
+owns the scheduler backend, task and DAG schedulers, listener bus, and driver <a href="spark-env.html">SparkEnv</a>.
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/SparkContext.scala#L3416-L3438">One active context per driver JVM</a> is the normal invariant; multiple
+<a href="spark-session.html">SparkSessions</a> can share it. The JVM is the YARN AM in cluster mode
+and the submit-side JVM in client mode. No context is shipped to executors or
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/python/pyspark/core/context.py#L184-L204">exposed to a remote Spark Connect client</a>.</p>
+<h2 id="flow-at-a-glance">Flow at a glance</h2>
+<ol>
+<li><strong>RDD action</strong>: Calls runJob with a function and selected partitions.</li>
+<li><strong>SparkContext</strong>: Cleans the closure and hands the job to the DAG scheduler.</li>
+<li><strong>Result handler</strong>: Receives one result per requested partition.</li>
+</ol>
+<blockquote>
+<p><strong>Watch for:</strong> Read <code>sc.defaultParallelism</code> on the driver and capture the integer in a task function, not <code>sc</code>.</p>
+</blockquote>
+<details>
+<summary>Show the animated flow</summary>
+
+<p><img src="visuals/spark-context.svg" alt="An RDD action goes through SparkContext to the DAG scheduler and gets a result for each requested partition"></p>
+</details>
+
+<h2 id="construction-from-sparkconf-to-a-usable-application">Construction: from <code>SparkConf</code> to a usable application</h2>
+<ol>
+<li><strong>Acquire a context.</strong> The session builder or user calls Python <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/python/pyspark/core/context.py#L517-L543"><code>getOrCreate(conf)</code></a>.
+Under a lock it returns the current context or constructs one. The constructor
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/python/pyspark/core/context.py#L442-L488">attaches to the gateway</a>, combines <code>SparkConf</code> with direct options,
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/python/pyspark/core/context.py#L239-L302">checks <code>spark.master</code> and <code>spark.app.name</code></a>, and calls <code>JavaSparkContext(jconf)</code>.
+That Java constructor creates the Scala context. Explicitly constructing a second
+Python context is rejected rather than starting a second application.</li>
+<li><strong>Build driver services.</strong> The JVM <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/SparkContext.scala#L88-L109">marks the context as under construction</a>,
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/SparkContext.scala#L432-L450">clones and validates its configuration</a>, and sets its driver host/port.
+It wires the status listener <strong>before</strong> creating the environment, so early events are
+captured, then <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/SparkContext.scala#L503-L573">publishes <code>SparkEnv</code> and binds the optional UI</a>. It registers
+the <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/SparkContext.scala#L633-L655">heartbeat endpoint before scheduler construction</a> because an executor
+looks it up during startup.</li>
+<li><strong>Start scheduling.</strong> With master <code>yarn</code>, the external cluster manager <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/scheduler/cluster/YarnClusterManager.scala#L26-L56">chooses a
+scheduler/backend pair by deploy mode</a>. The context constructs <code>DAGScheduler</code>,
+starts the task scheduler, obtains application/attempt IDs, and <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/SparkContext.scala#L676-L704">initializes the driver
+block manager with the application ID</a>. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/scheduler/cluster/YarnClientSchedulerBackend.scala#L49-L73">Client mode</a> submits
+the YARN application during backend start; <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/scheduler/cluster/YarnClusterScheduler.scala#L27-L36">cluster mode</a> signals the
+existing AM in <code>postStartHook</code>. The JVM <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/SparkContext.scala#L3336-L3341">publishes the active context</a> after
+successful construction; an <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/SparkContext.scala#L757-L800">initialization exception triggers cleanup</a>.</li>
+</ol>
+<h2 id="job-interface-what-an-action-hands-off">Job interface: what an action hands off</h2>
+<table>
+<thead>
+<tr>
+<th>Caller and input</th>
+<th>What <code>SparkContext</code> does</th>
+<th>Observable output</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Core action calls <code>runJob(rdd: RDD[T], func: (TaskContext, Iterator[T]) =&gt; U, partitions: Seq[Int], resultHandler: (Int, U) =&gt; Unit)</code></td>
+<td>Reject a stopped context, capture the call site, clean the closure, and pass these plus the submitting thread&#39;s local properties to <code>DAGScheduler.runJob</code></td>
+<td>Per-result callbacks; this overload returns <code>Unit</code> when complete. The overload without a handler builds an <code>Array[U]</code> sized to the requested partitions. A failed job can throw to the caller.</td>
+</tr>
+<tr>
+<td>Python <code>sc.stop()</code>, including through <code>spark.stop()</code></td>
+<td>Stop the Java/Scala context; JVM uses an atomic guard, posts application end, stops the schedulers and environment, and clears its active reference. Python clears <code>_jsc</code> and the active Python context.</td>
+<td><code>None</code> in Python. Old RDDs/session handles do not become valid against a future context. Orderly JVM exit also has a shutdown hook.</td>
+</tr>
+</tbody></table>
+<p><code>SparkContext</code> is the entry to the job; the <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/SparkContext.scala#L2784-L2831"><code>runJob</code> handoff</a> delegates stage
+boundaries to the <a href="dag-scheduler.html">DAGScheduler</a>. For shutdown, compare the <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/SparkContext.scala#L2621-L2672">JVM stop
+guard</a>, <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/SparkContext.scala#L2714-L2731">service and active-reference cleanup</a>, and <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/python/pyspark/core/context.py#L694-L717">Python stop</a>.</p>
+<h2 id="diagnostic-a-task-function-captures-sc">Diagnostic: a task function captures <code>sc</code></h2>
+<p><code>sc.parallelize([1]).map(lambda _: sc.defaultParallelism).collect()</code> captures the live
+application context in a Python task closure. The driver <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/python/pyspark/core/rdd.py#L5106-L5136">serializes that closure</a>
+before running it; <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/python/pyspark/core/context.py#L490-L495"><code>SparkContext.__getnewargs__</code></a> deliberately raises
+<code>CONTEXT_ONLY_VALID_ON_DRIVER</code> (often seen inside a serialization error). Read
+<code>sc.defaultParallelism</code> <strong>on the driver</strong> first and capture the resulting integer instead.
+This is not a shortage of executor cores or a failed YARN registration.</p>
+</main></html>

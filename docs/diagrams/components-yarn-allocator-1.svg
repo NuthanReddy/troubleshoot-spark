@@ -1,0 +1,81 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 918.0829999999999 400" width="918.0829999999999" height="400" style="--bg:#101d2e;--fg:#ecf3f8;--line:#839ab5;--accent:#93e3d1;background:var(--bg)">
+<style>
+  text { font-family: 'system-ui', system-ui, sans-serif; }
+  svg {
+    /* Derived from --bg and --fg (overridable via --line, --accent, etc.) */
+    --_text:          var(--fg);
+    --_text-sec:      var(--muted, color-mix(in srgb, var(--fg) 60%, var(--bg)));
+    --_text-muted:    var(--muted, color-mix(in srgb, var(--fg) 40%, var(--bg)));
+    --_text-faint:    color-mix(in srgb, var(--fg) 25%, var(--bg));
+    --_line:          var(--line, color-mix(in srgb, var(--fg) 50%, var(--bg)));
+    --_arrow:         var(--accent, color-mix(in srgb, var(--fg) 85%, var(--bg)));
+    --_node-fill:     var(--surface, color-mix(in srgb, var(--fg) 3%, var(--bg)));
+    --_node-stroke:   var(--border, color-mix(in srgb, var(--fg) 20%, var(--bg)));
+    --_group-fill:    var(--bg);
+    --_group-hdr:     color-mix(in srgb, var(--fg) 5%, var(--bg));
+    --_inner-stroke:  color-mix(in srgb, var(--fg) 12%, var(--bg));
+    --_key-badge:     color-mix(in srgb, var(--fg) 10%, var(--bg));
+  }
+</style>
+<defs>
+  <marker id="seq-arrow" markerWidth="8" markerHeight="5" refX="8" refY="2.5" orient="auto-start-reverse">
+    <polygon points="0 0, 8 2.5, 0 5" fill="var(--_arrow)" />
+  </marker>
+  <marker id="seq-arrow-open" markerWidth="8" markerHeight="5" refX="8" refY="2.5" orient="auto-start-reverse">
+    <polyline points="0 0, 8 2.5, 0 5" fill="none" stroke="var(--_arrow)" stroke-width="1" />
+  </marker>
+</defs>
+<line class="lifeline" data-actor="D" x1="85.1365" y1="70" x2="85.1365" y2="370" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" />
+<line class="lifeline" data-actor="A" x1="256.1575" y1="70" x2="256.1575" y2="370" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" />
+<line class="lifeline" data-actor="R" x1="445.7035" y1="70" x2="445.7035" y2="370" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" />
+<line class="lifeline" data-actor="N" x1="643.771" y1="70" x2="643.771" y2="370" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" />
+<line class="lifeline" data-actor="E" x1="828.1299999999999" y1="70" x2="828.1299999999999" y2="370" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" />
+<g class="message" data-from="D" data-to="A" data-label="Desired totals via YarnAM" data-line-style="solid" data-arrow-head="filled" data-self="false">
+  <line x1="85.1365" y1="90" x2="256.1575" y2="90" stroke="var(--_line)" stroke-width="1" marker-end="url(#seq-arrow)" />
+  <text x="170.64700000000002" y="80" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">Desired totals via YarnAM</text>
+</g>
+<g class="message" data-from="A" data-to="R" data-label="allocate heartbeat with pending asks" data-line-style="solid" data-arrow-head="filled" data-self="false">
+  <line x1="256.1575" y1="130" x2="445.7035" y2="130" stroke="var(--_line)" stroke-width="1" marker-end="url(#seq-arrow)" />
+  <text x="350.93050000000005" y="120" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">allocate heartbeat with pending asks</text>
+</g>
+<g class="message" data-from="R" data-to="A" data-label="Container grant on N" data-line-style="dashed" data-arrow-head="filled" data-self="false">
+  <line x1="445.7035" y1="170" x2="256.1575" y2="170" stroke="var(--_line)" stroke-width="1" stroke-dasharray="6 4" marker-end="url(#seq-arrow)" />
+  <text x="350.93050000000005" y="160" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">Container grant on N</text>
+</g>
+<g class="message" data-from="A" data-to="N" data-label="startContainer via ExecutorRunnable" data-line-style="solid" data-arrow-head="filled" data-self="false">
+  <line x1="256.1575" y1="210" x2="643.771" y2="210" stroke="var(--_line)" stroke-width="1" marker-end="url(#seq-arrow)" />
+  <text x="449.96425" y="200" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">startContainer via ExecutorRunnable</text>
+</g>
+<g class="message" data-from="N" data-to="E" data-label="Localize resources and start JVM" data-line-style="solid" data-arrow-head="filled" data-self="false">
+  <line x1="643.771" y1="250" x2="828.1299999999999" y2="250" stroke="var(--_line)" stroke-width="1" marker-end="url(#seq-arrow)" />
+  <text x="735.9504999999999" y="240" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">Localize resources and start JVM</text>
+</g>
+<g class="message" data-from="E" data-to="D" data-label="RetrieveSparkAppConfig, then RegisterExecutor" data-line-style="solid" data-arrow-head="filled" data-self="false">
+  <line x1="828.1299999999999" y1="290" x2="85.1365" y2="290" stroke="var(--_line)" stroke-width="1" marker-end="url(#seq-arrow)" />
+  <text x="456.6332499999999" y="280" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">RetrieveSparkAppConfig, then RegisterExecutor</text>
+</g>
+<g class="message" data-from="E" data-to="D" data-label="LaunchedExecutor" data-line-style="solid" data-arrow-head="filled" data-self="false">
+  <line x1="828.1299999999999" y1="330" x2="85.1365" y2="330" stroke="var(--_line)" stroke-width="1" marker-end="url(#seq-arrow)" />
+  <text x="456.6332499999999" y="320" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">LaunchedExecutor</text>
+</g>
+<g class="actor" data-id="D" data-label="Spark driver" data-type="participant">
+  <rect x="30" y="30" width="110.273" height="40" rx="4" ry="4" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <text x="85.1365" y="50" font-size="13" text-anchor="middle" font-weight="500" fill="var(--_text)" dy="4.55">Spark driver</text>
+</g>
+<g class="actor" data-id="A" data-label="YarnAllocator in AM" data-type="participant">
+  <rect x="180.27300000000002" y="30" width="151.769" height="40" rx="4" ry="4" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <text x="256.1575" y="50" font-size="13" text-anchor="middle" font-weight="500" fill="var(--_text)" dy="4.55">YarnAllocator in AM</text>
+</g>
+<g class="actor" data-id="R" data-label="ResourceManager" data-type="participant">
+  <rect x="372.04200000000003" y="30" width="147.32299999999998" height="40" rx="4" ry="4" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <text x="445.7035" y="50" font-size="13" text-anchor="middle" font-weight="500" fill="var(--_text)" dy="4.55">ResourceManager</text>
+</g>
+<g class="actor" data-id="N" data-label="Granted NodeManager" data-type="participant">
+  <rect x="559.365" y="30" width="168.81199999999998" height="40" rx="4" ry="4" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <text x="643.771" y="50" font-size="13" text-anchor="middle" font-weight="500" fill="var(--_text)" dy="4.55">Granted NodeManager</text>
+</g>
+<g class="actor" data-id="E" data-label="Executor JVM" data-type="participant">
+  <rect x="768.1769999999999" y="30" width="119.90599999999999" height="40" rx="4" ry="4" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <text x="828.1299999999999" y="50" font-size="13" text-anchor="middle" font-weight="500" fill="var(--_text)" dy="4.55">Executor JVM</text>
+</g>
+</svg>

@@ -1,0 +1,56 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>HeartbeatReceiver: executor liveness at the driver · Troubleshoot Spark</title><link rel="stylesheet" href="../style.css"><main class="reader"><nav><a href=".././#map">Diagnostic map</a> · <a href="../guide.html">Lifecycle</a> · <a href="../scenarios.html">Cases</a> · <a href="../components/index.html">Components</a></nav><h1 id="heartbeatreceiver-executor-liveness-at-the-driver">HeartbeatReceiver: executor liveness at the driver</h1>
+<p><a href="index.html">component index</a></p>
+<p>A Spark executor can be healthy from YARN&#39;s perspective yet unreachable from its Spark driver. <code>HeartbeatReceiver</code> is a <strong>named Spark RPC endpoint in the driver JVM</strong>. It records contact from known executor IDs, forwards in-flight metrics and detects long gaps. It does not use task completion, the availability of YARN containers, or the <a href="executor-monitor.html">dynamic allocation idle deadline</a> as its liveness signal.</p>
+<h2 id="flow-at-a-glance">Flow at a glance</h2>
+<ol>
+<li><strong>Last contact</strong>: At 0 seconds the driver hears from executor 7.</li>
+<li><strong>120-second check</strong>: Keep executor 7 at the exact 120-second timeout.</li>
+<li><strong>180-second check</strong>: Expire the silent executor and request a replacement.</li>
+</ol>
+<blockquote>
+<p><strong>Watch for:</strong> The driver measures a gap between heartbeats it receives. A timeout is not proof that YARN killed the container.</p>
+</blockquote>
+<details>
+<summary>Show the animated flow</summary>
+
+<p><img src="visuals/heartbeat-receiver.svg" alt="The driver keeps executor 7 at 120 seconds and requests a replacement at the 180-second check."></p>
+</details>
+
+<h2 id="owner-and-wire-contract">Owner and wire contract</h2>
+<p><code>SparkContext</code> <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/SparkContext.scala#L633-L653">registers the endpoint before creating the task scheduler</a>, then sends <code>TaskSchedulerIsSet</code>. The receiver also listens on the management queue: executor-added and executor-removed notifications become local RPCs that insert or delete <code>executorLastSeen(id)</code>. The endpoint owns this map of <strong>driver receipt times</strong>, not executor clock readings. Its <code>onStart</code> schedules <code>ExpireDeadHosts</code> checks; <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/SparkContext.scala#L2698-L2708"><code>SparkContext.stop()</code></a> stops the endpoint, whose <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/HeartbeatReceiver.scala#L210-L257"><code>onStop</code></a> cancels the checks and shuts down the event-loop and kill threads.</p>
+<p>Each executor JVM <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/executor/Executor.scala#L482-L504">looks up the driver&#39;s endpoint</a> and starts its own <code>executor-heartbeater</code>, with a <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/Heartbeater.scala#L33-L51">randomized first delay</a>. This works even with no running tasks and no Python worker. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/executor/Executor.scala#L652-L670">Executor shutdown</a> stops the sender. The <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/HeartbeatReceiver.scala#L37-L69">request and response types</a> are:</p>
+<table>
+<thead>
+<tr>
+<th>Direction</th>
+<th>Payload and meaning</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Executor to driver: <code>Heartbeat</code></td>
+<td>Executor ID, <code>(taskId, accumulator updates)</code> for running tasks, <code>BlockManagerId</code>, and executor metric peaks keyed by <code>(stageId, stageAttemptId)</code>. Not a task result or a list of container asks.</td>
+</tr>
+<tr>
+<td>Driver to executor: <code>HeartbeatResponse</code></td>
+<td>One flag: <code>reregisterBlockManager</code>. If true and the executor is not stopping, it calls <code>BlockManager.reregister()</code>. This is <strong>storage registration</strong>, not an instruction to launch or re-register the executor with YARN.</td>
+</tr>
+</tbody></table>
+<h2 id="receipt-and-reply">Receipt and reply</h2>
+<figure class="source-figure"><a href="../diagrams/components-heartbeat-receiver-1.svg" title="Open diagram at full size"><img loading="lazy" src="../diagrams/components-heartbeat-receiver-1.svg" alt="Sequence diagram for components heartbeat receiver; open to enlarge"></a><figcaption>Sequence diagram · <a href="../diagrams/components-heartbeat-receiver-1.svg">Open full size</a></figcaption><details><summary>Text equivalent</summary><pre>sequenceDiagram
+    participant E as Executor heartbeater
+    participant H as Driver HeartbeatReceiver
+    participant S as TaskSchedulerImpl and DAGScheduler
+    participant B as BlockManagerMaster heartbeat endpoint
+    E-&gt;&gt;H: Heartbeat with executor ID and metrics
+    Note over H: Refresh lastSeen for a known executor
+    H-&gt;&gt;S: Dispatch executorHeartbeatReceived on the event-loop thread
+    S-&gt;&gt;S: Attach known task stage IDs and post a metrics event
+    S-&gt;&gt;B: BlockManagerHeartbeat with BlockManagerId
+    B--&gt;&gt;S: Is this block manager known?
+    S--&gt;&gt;H: Boolean
+    H--&gt;&gt;E: HeartbeatResponse with re-registration flag</pre></details></figure>
+<p>The receiver <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/HeartbeatReceiver.scala#L120-L168">updates <code>lastSeen</code> before dispatching metric processing</a>. <code>TaskSchedulerImpl</code> <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/TaskSchedulerImpl.scala#L900-L920">joins task IDs to current task sets</a> and omits per-task updates it can no longer identify. <code>DAGScheduler</code> <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/DAGScheduler.scala#L564-L581">posts <code>SparkListenerExecutorMetricsUpdate</code> and asks the storage endpoint</a>; the <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/storage/BlockManagerMasterHeartbeatEndpoint.scala#L35-L57">storage reply</a> determines the flag on the normal path. An unknown executor ID or not-yet-ready scheduler gets a reply without that forwarding; while the context is running the flag is true. This also handles a late, in-flight heartbeat after removal.</p>
+<h2 id="worked-timeout-executor-7-goes-silent">Worked timeout: executor 7 goes silent</h2>
+<p>Suppose the last receipt is at <code>t=0</code>, the timeout is 120 s and checks fall at <code>t=60,120,180</code>. The comparison is <strong>strictly greater than</strong> the timeout, so the first two checks do not expire <code>7</code>. At <code>t=180</code>, the driver removes the entry and submits work to its separate kill thread. It <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/SparkContext.scala#L2100-L2117">requests kill-and-replace without lowering the executor target</a> and sends the coarse-grained backend <code>RemoveExecutor</code> with a heartbeat-timeout loss reason so task loss does not depend on a later disconnect. This is a replacement request, not a guaranteed YARN grant.</p>
+<p><strong>Which timeout fired?</strong> The driver uses <code>spark.storage.blockManagerHeartbeatTimeoutMs</code> if set, otherwise <code>spark.network.timeout</code>; <code>spark.network.timeoutInterval</code> controls the check cadence. The executor separately times out its own RPC, counts consecutive failures, resets the count on success and can exit on reaching its limit. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/HeartbeatReceiver.scala#L75-L118">Driver thresholds</a>; <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/executor/Executor.scala#L1544-L1590">executor handling</a>. A timeout is evidence of <strong>missing communication</strong>, not proof of a dead node: a long JVM pause, a delayed driver or a network break can look alike. The <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/deploy/yarn/YarnAllocator.scala#L439-L470">AM&#39;s <code>allocate</code> heartbeat to the RM</a> reports resource requests/grants/completions; NodeManager-to-RM node health is another YARN channel. Neither supplies the Spark receiver&#39;s timestamps.</p>
+</main></html>

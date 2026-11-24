@@ -1,0 +1,110 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>YARN ResourceManager: who gets the next container? · Troubleshoot Spark</title><link rel="stylesheet" href="../style.css"><main class="reader"><nav><a href=".././#map">Diagnostic map</a> · <a href="../guide.html">Lifecycle</a> · <a href="../scenarios.html">Cases</a> · <a href="../components/index.html">Components</a></nav><h1 id="yarn-resourcemanager-who-gets-the-next-container">YARN ResourceManager: who gets the next container?</h1>
+<p><a href="index.html">component index</a> | <a href="../guide.html">PySpark on YARN walkthrough</a></p>
+<p>The ResourceManager (RM) grants a particular application a <a href="yarn-container.html">container</a>
+on a particular node. It also arranges the first launch, because there is no
+<a href="application-master.html">ApplicationMaster (AM)</a> yet to request it. <strong>Only the NodeManager starts the
+process.</strong> The RM never receives <code>orders.py</code> task descriptions, rows, or
+shuffle blocks.</p>
+<h2 id="flow-at-a-glance">Flow at a glance</h2>
+<ol>
+<li><strong>RM scheduler</strong>: Chooses a node with room for the AM container.</li>
+<li><strong>RM launcher</strong>: Asks that node&#39;s NodeManager to start the AM.</li>
+<li><strong>ApplicationMaster</strong>: Registers the new attempt with the ResourceManager.</li>
+</ol>
+<blockquote>
+<p><strong>Key distinction:</strong> RUNNING means the AM registered. Spark may still have no executors.</p>
+</blockquote>
+<details>
+<summary>Show the animated flow</summary>
+
+<p><img src="visuals/resource-manager.svg" alt="The ResourceManager selects a node and requests the AM launch; the new AM registers its attempt with the ResourceManager."></p>
+</details>
+
+<h2 id="runtime-boundary-and-ownership">Runtime boundary and ownership</h2>
+<p>The RM is a long-lived Hadoop JVM shared by applications. Cluster operators or
+their service manager start, monitor, and stop it. In an HA deployment, one RM
+is active; a standby can take over manually or through configured automatic
+failover. A Spark application finishing releases its resources, not the RM.</p>
+<h2 id="three-callers-three-contracts">Three callers, three contracts</h2>
+<table>
+<thead>
+<tr>
+<th>Caller and Hadoop RPC endpoint</th>
+<th>Input</th>
+<th>What the caller gets back</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>spark-submit</code> to <code>ClientRMService</code> (<code>ApplicationClientProtocol</code>)</td>
+<td><code>getNewApplication()</code>, then <code>submitApplication(ApplicationSubmissionContext)</code> with application ID, queue, AM resource request, and AM launch context</td>
+<td>The first call returns an ID and maximum resource capability. A submission acknowledgement is not a running AM. <code>getApplicationReport</code> returns state, current attempt, diagnostics, and final status.</td>
+</tr>
+<tr>
+<td>NM to <code>ResourceTrackerService</code> (<code>ResourceTracker</code>)</td>
+<td><code>registerNodeManager</code> advertises a <code>NodeId</code> and capacity. <code>nodeHeartbeat</code> reports health and container statuses.</td>
+<td>Registration response; heartbeat responses can identify containers or applications to clean up, or instruct the NM to resynchronize. This is <strong>node</strong> liveness.</td>
+</tr>
+<tr>
+<td>Spark AM to <code>ApplicationMasterService</code> (<code>ApplicationMasterProtocol</code>)</td>
+<td><code>registerApplicationMaster</code>; repeated <code>allocate</code> calls with response ID, progress, updated resource asks, and IDs to release; finally <code>finishApplicationMaster</code> with final status and diagnostics</td>
+<td><code>allocate</code> can return zero or more grants, completed container statuses, headroom, and NM tokens. These calls also establish <strong>attempt</strong> liveness; headroom is not a promise of a grant.</td>
+</tr>
+</tbody></table>
+<p>The RM holds separate records for the application (<code>RMApp</code>), its attempts,
+registered nodes, and allocated containers. Its scheduler accounts for queue
+usage and outstanding asks. An ask describes a count, resource vector, priority,
+and locality (host, rack, or <code>*</code>), not a Spark partition. Available capacity
+must fit on an eligible node under the configured scheduler&#39;s queue and placement
+rules. Several nodes&#39; spare memory cannot be combined into one container.</p>
+<h2 id="worked-flow-one-am-then-three-executors">Worked flow: one AM, then three executors</h2>
+<figure class="source-figure"><a href="../diagrams/components-resource-manager-1.svg" title="Open diagram at full size"><img loading="lazy" src="../diagrams/components-resource-manager-1.svg" alt="Sequence diagram for components resource manager; open to enlarge"></a><figcaption>Sequence diagram · <a href="../diagrams/components-resource-manager-1.svg">Open full size</a></figcaption><details><summary>Text equivalent</summary><pre>sequenceDiagram
+    participant C as Submit client
+    participant R as Active RM
+    participant N1 as NM selected for AM
+    participant A as Spark AM
+    participant N2 as NM selected for executor
+    C-&gt;&gt;R: Submit AM resource request and launch context
+    R-&gt;&gt;N1: startContainers for the AM
+    N1-&gt;&gt;A: Localize and start AM JVM
+    A-&gt;&gt;R: Register, then allocate with executor asks
+    R--&gt;&gt;A: Container IDs, node addresses and tokens
+    A-&gt;&gt;N2: startContainers for an executor on its granted node
+    N2-&gt;&gt;N2: Localize and start executor JVM
+    N2-&gt;&gt;R: Node heartbeat with container exit status
+    A-&gt;&gt;R: Next allocate heartbeat
+    R--&gt;&gt;A: Completed container status</pre></details></figure>
+<ol>
+<li>The client submits the paid-orders application. The scheduler must first fit the AM, not all four containers. While the attempt is waiting to launch or register, the application can still show <code>ACCEPTED</code>.</li>
+<li>The RM&#39;s <code>AMLauncher</code> sends the selected NM a start request using the submitted AM launch context. When the AM registers, the application transitions to <code>RUNNING</code>; that does not mean any executor has registered with Spark.</li>
+<li>The AM asks for three two-vcore executor containers. If only two fit, it can receive two now and the third later. Each grant identifies its own NM; <strong>the AM</strong>, not the RM, sends the executor launch instructions there.</li>
+<li>As NMs report exits, the RM accounts for freed capacity and the AM learns of completions on <code>allocate</code>. The response ID matters: for an immediately repeated heartbeat whose reply was lost, the RM can return the cached reply instead of allocating twice.</li>
+<li>On orderly finish the AM unregisters with a final status such as <code>SUCCEEDED</code>; YARN can then show application state <code>FINISHED</code>. An AM failure instead can trigger a <strong>new attempt</strong>, subject to limits. Neither path retries an individual Spark task.</li>
+</ol>
+<h2 id="where-a-failure-shows-up">Where a failure shows up</h2>
+<table>
+<thead>
+<tr>
+<th>Observation</th>
+<th>First distinction to make</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Long-lived <code>ACCEPTED</code></td>
+<td>Compare <code>yarn application -status &lt;app_id&gt;</code> and <code>yarn applicationattempt -list &lt;app_id&gt;</code> with the RM scheduler view. No AM grant points to queue limits, node fit, or placement; an AM container ID points next to that NM&#39;s launch logs.</td>
+</tr>
+<tr>
+<td><code>RUNNING</code>, but zero Spark executors</td>
+<td>Check AM asks versus grants. With no grant, inspect the queue and eligible nodes. With a grant, follow its ID to the <a href="node-manager.html">NodeManager</a> and then to executor registration at the Spark driver.</td>
+</tr>
+<tr>
+<td>RM unavailable</td>
+<td>New submissions and allocations cannot progress against it. Existing processes need not die immediately. With work-preserving recovery, NMs report surviving containers and AMs resend outstanding asks; a fresh RM alone cannot reconstruct a Python driver stack.</td>
+</tr>
+</tbody></table>
+<h2 id="sources">Sources</h2>
+<ul>
+<li>Hadoop 3.4.1: <a href="https://hadoop.apache.org/docs/r3.4.1/hadoop-yarn/hadoop-yarn-site/YARN.html">YARN responsibilities</a>, <a href="https://hadoop.apache.org/docs/r3.4.1/hadoop-yarn/hadoop-yarn-site/ResourceManagerHA.html">RM failover</a>, and <a href="https://hadoop.apache.org/docs/r3.4.1/hadoop-yarn/hadoop-yarn-site/ResourceManagerRestart.html">restart and state reconstruction</a>.</li>
+<li>Hadoop 3.4.1 source: <a href="https://github.com/apache/hadoop/blob/4d7825309348956336b8f06a08322b78422849b1/hadoop-yarn-project/hadoop-yarn/hadoop-yarn-api/src/main/proto/yarn_service_protos.proto">client and AM request/response records</a>, <a href="https://github.com/apache/hadoop/blob/4d7825309348956336b8f06a08322b78422849b1/hadoop-yarn-project/hadoop-yarn/hadoop-yarn-server/hadoop-yarn-server-common/src/main/proto/yarn_server_common_service_protos.proto">NM heartbeat records</a>, <a href="https://github.com/apache/hadoop/blob/4d7825309348956336b8f06a08322b78422849b1/hadoop-yarn-project/hadoop-yarn/hadoop-yarn-server/hadoop-yarn-server-resourcemanager/src/main/java/org/apache/hadoop/yarn/server/resourcemanager/amlauncher/AMLauncher.java">AMLauncher</a>, and <a href="https://github.com/apache/hadoop/blob/4d7825309348956336b8f06a08322b78422849b1/hadoop-yarn-project/hadoop-yarn/hadoop-yarn-server/hadoop-yarn-server-resourcemanager/src/main/java/org/apache/hadoop/yarn/server/resourcemanager/ApplicationMasterService.java">AM heartbeat handling</a>.</li>
+<li>Spark integration: <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/deploy/yarn/YarnAllocator.scala#L439-L469"><code>YarnAllocator.allocateResources</code> consumes grants and completions</a>.</li>
+</ul>
+</main></html>
