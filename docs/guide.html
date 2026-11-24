@@ -1,0 +1,591 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>PySpark on YARN · Troubleshoot Spark</title><link rel="stylesheet" href="style.css"><main class="reader"><nav><a href="./">← Scenario explorer</a> · <a href="guide.html">Lifecycle</a> · <a href="scenarios.html">All cases</a></nav><h1 id="pyspark-on-yarn-from-spark-submit-to-the-last-shuffle-block">PySpark on YARN: from <code>spark-submit</code> to the last shuffle block</h1>
+<p>YARN decides <strong>where processes can run</strong>. A NodeManager launches those processes.
+The Spark driver decides <strong>which tasks they run</strong>. If executor B needs data produced
+by executor A, the driver tells B what to run and where the data is; B fetches the
+bytes from A&#39;s node. The ResourceManager does not relay tasks or shuffle data.</p>
+<p>This guide traces a classic PySpark batch application, not Spark Connect. It covers
+<a href="#startup-in-cluster-mode">startup</a>, <a href="#what-changes-in-client-mode">client mode</a>,
+<a href="#how-processes-find-each-other">discovery</a>, <a href="#from-a-dataframe-action-to-an-executor-thread">task execution</a>,
+<a href="#follow-one-shuffle-block">shuffle</a>, <a href="#protocols-and-listening-ports">ports</a>, and
+<a href="#shutdown-failures-and-where-to-look">shutdown</a>. For individual troubleshooting
+cases, see the companion <a href="scenarios.html">PySpark-on-YARN scenarios</a>.</p>
+<h2 id="the-application-we-will-follow">The application we will follow</h2>
+<pre><code class="language-shell">export HADOOP_CONF_DIR=/etc/hadoop/conf
+spark-submit --master yarn --deploy-mode cluster \
+  --name paid-orders-by-region --queue analytics \
+  --driver-memory 2g --driver-cores 1 --num-executors 3 --executor-cores 2 \
+  --conf spark.dynamicAllocation.enabled=false orders.py --date 2026-11-24
+</code></pre>
+<pre><code class="language-python">import argparse
+
+from pyspark.sql import SparkSession
+
+parser = argparse.ArgumentParser()
+parser.add_argument(&quot;--date&quot;, required=True)
+args = parser.parse_args()
+spark = SparkSession.builder.getOrCreate()
+try:
+    orders = spark.read.parquet(f&quot;hdfs:///warehouse/orders/date={args.date}&quot;)
+    paid = orders.where(&quot;status = &#39;PAID&#39;&quot;)
+    counts = paid.groupBy(&quot;region&quot;).count()
+    counts.write.parquet(f&quot;hdfs:///reports/paid-orders-by-region/date={args.date}&quot;)
+finally:
+    spark.stop()
+</code></pre>
+<p>An <strong>application</strong> is the lifetime of this driver and its executors. A <strong>job</strong> is a
+distributed computation within that application. A job has <strong>stages</strong>, separated by
+dependencies such as shuffles. A <strong>task attempt</strong> is one attempt to compute a stage
+partition, on an executor thread. It is not a new process or YARN container.</p>
+<p>Once all resources are granted, this example has <strong>four containers</strong>: one for the
+ApplicationMaster (AM) and three for executor JVMs. A YARN container is a resource
+allocation on a node, not necessarily a Docker container. With one CPU per task and
+no other constraint, the three two-core executors can run six tasks concurrently.
+A 12-partition stage therefore takes at least two waves, not 12 containers.</p>
+<h2 id="startup-in-cluster-mode">Startup in cluster mode</h2>
+<ol class="sequence"><li><b>spark-submit client → ResourceManager</b><span>Obtain application ID</span></li><li><i>Stage script, configuration, and dependencies as needed</i></li><li><b>spark-submit client → ResourceManager</b><span>Submit application and AM launch instructions</span></li><li><b>ResourceManager → NodeManagers</b><span>Ask selected node to launch the AM container</span></li><li><b>NodeManagers → AM and driver JVM</b><span>Localize files and start the AM JVM</span></li><li><b>AM and driver JVM → Python driver</b><span>PythonRunner starts orders.py</span></li><li><b>Python driver → AM and driver JVM</b><span>Initialize SparkContext through Py4J</span></li><li><b>AM and driver JVM → ResourceManager</b><span>Register AM for this attempt</span></li><li><b>AM and driver JVM → ResourceManager</b><span>Request executor containers</span></li><li><b>ResourceManager → AM and driver JVM</b><span>Grant containers on specific nodes</span></li><li><b>AM and driver JVM → NodeManagers</b><span>Send an executor launch command to each selected NM</span></li><li><b>NodeManagers → Executor JVMs</b><span>Start executor JVMs in the granted containers</span></li><li><b>Executor JVMs → AM and driver JVM</b><span>Register with the Spark driver</span></li></ol>
+<h3 id="what-the-two-yarn-launch-requests-carry">What the two YARN launch requests carry</h3>
+<p><code>org.apache.spark.deploy.SparkSubmit</code> runs on the submitting machine. For YARN
+cluster mode it selects <code>YarnClusterApplication</code>, which runs Spark&#39;s YARN <code>Client</code>.
+The client obtains an application ID and uploads the local <code>orders.py</code> to shared
+storage, typically <code>.sparkStaging/&lt;application-id&gt;/</code> under the user&#39;s HDFS home.
+If neither <code>spark.yarn.archive</code> nor <code>spark.yarn.jars</code> is set, Spark zips the JARs
+from <code>$SPARK_HOME/jars</code> and stages the archive. The Spark YARN JAR contains
+<code>ApplicationMaster</code>; it need not be preinstalled on each worker.</p>
+<p><strong>Submit JVM → ResourceManager:</strong> <code>ApplicationClientProtocol.submitApplication</code>.
+This is a field-level view of the request for the example, not a wire dump:</p>
+<pre><code class="language-text">SubmitApplicationRequest
+  applicationSubmissionContext: ApplicationSubmissionContext
+    applicationId: &lt;assigned by RM&gt;
+    applicationName: paid-orders-by-region
+    applicationType: SPARK
+    queue: analytics
+    unmanagedAM: false
+    resource: {memorySize: 2048 MiB + driver memory overhead, virtualCores: 1}
+    amContainerSpec: ContainerLaunchContext
+      commands: &lt;AM launch command below&gt;
+      localResources:
+        orders.py:      {resource: &lt;staged URI&gt;, type: FILE, size, timestamp, visibility}
+        __spark_libs__: &lt;Spark JAR archive; type ARCHIVE&gt;
+        __spark_conf__: &lt;configuration archive; type ARCHIVE&gt;
+      environment:
+        CLASSPATH: &lt;includes __spark_libs__/*&gt;
+        PYTHONPATH: &lt;localized Python dependencies&gt;
+        SPARK_YARN_STAGING_DIR: &lt;application staging directory&gt;
+      tokens: &lt;serialized Hadoop credentials&gt;
+      applicationACLs: &lt;YARN view/modify settings&gt;
+</code></pre>
+<p><code>applicationType</code> labels the application; <code>commands</code> selects the program.
+<code>spark.yarn.appMasterEnv.&lt;NAME&gt;</code> adds <code>&lt;NAME&gt;</code> to the AM environment.
+If configured, <code>tokensConf</code> carries Hadoop settings matching <code>spark.yarn.am.tokenConfRegex</code>
+for token renewal. The outer context can also specify tags, priority, attempt limits,
+and log aggregation. With an AM node label, Spark sets <code>amContainerResourceRequests</code>
+for one matching container instead of setting <code>resource</code> directly.</p>
+<p><strong>ResourceManager → selected NodeManager:</strong> after the grant, the RM&#39;s <code>AMLauncher</code>
+calls <code>ContainerManagementProtocol.startContainers</code>. The NodeManager receives the
+container launch context, <strong>not</strong> the whole application submission:</p>
+<pre><code class="language-text">StartContainersRequest
+  startContainerRequests[0]: StartContainerRequest
+    containerToken: &lt;RM-issued authorization for this container on this node&gt;
+    containerLaunchContext: ContainerLaunchContext
+      commands: &lt;includes --primary-py-file orders.py&gt;
+      localResources: &lt;includes orders.py -&gt; staged URI&gt;
+      environment: &lt;container environment&gt;
+      tokens: &lt;credentials for the container to use&gt;
+      applicationACLs: &lt;application access settings&gt;
+</code></pre>
+<p>The filename travels <strong>twice</strong>, for different consumers: <code>localResources[&quot;orders.py&quot;]</code>
+tells the NodeManager what to fetch and which local name to expose;
+<code>--primary-py-file orders.py</code> tells the AM which file to run. Neither RPC carries the
+file bytes. On a cache miss the NodeManager gets block locations from the HDFS
+NameNode and reads bytes from DataNodes. It unpacks archive resources and exposes
+them in the container working directory; valid cached resources can be reused.</p>
+<h3 id="which-jvm-starts-python-and-initializes-spark">Which JVM starts Python and initializes Spark?</h3>
+<p>The NodeManager launches Java with generated JVM options (including <code>-Xmx2048m</code>
+here), container stdout/stderr redirection, and the following main class and
+arguments. <code>$PWD</code> denotes the container working directory:</p>
+<pre><code class="language-text">org.apache.spark.deploy.yarn.ApplicationMaster
+--class org.apache.spark.deploy.PythonRunner
+--primary-py-file orders.py
+--arg --date
+--arg 2026-11-24
+--properties-file $PWD/__spark_conf__/__spark_conf__.properties
+--dist-cache-conf $PWD/__spark_conf__/__spark_dist_cache__.properties
+</code></pre>
+<ol>
+<li>Java invokes <code>ApplicationMaster.main()</code>. The AM reads <code>--class</code>; because
+<code>args.userClass != null</code>, it takes the <code>runDriver()</code> branch. A thread named
+<code>Driver</code> invokes <code>PythonRunner.main()</code> <strong>in that same JVM</strong>.</li>
+<li><code>PythonRunner</code> starts a separate Python process in the AM container, supplies
+the Py4J gateway connection information, and runs <code>orders.py --date 2026-11-24</code>.</li>
+<li>On the first <code>SparkSession.builder.getOrCreate()</code>, the Python builder calls
+<code>SparkContext.getOrCreate()</code>. Py4J constructs a <code>JavaSparkContext</code> wrapping the
+JVM <code>SparkContext</code>. The context sets up <code>HeartbeatReceiver</code>, the schedulers, the
+YARN scheduler backend, the driver metrics system, and the listener bus.</li>
+<li><code>YarnClusterScheduler.postStartHook()</code> signals <code>ApplicationMaster.sparkContextInitialized(sc)</code>.
+The AM can now register with the RM (<code>registerApplicationMaster</code>), locate the
+driver endpoint, and start requesting executors <strong>before <code>getOrCreate()</code> returns</strong>.</li>
+<li>The builder returns a Python <code>SparkSession</code> backed by a JVM SQL session.
+<code>spark.sparkContext</code> is the Python handle for the application-wide context.
+<code>spark.newSession()</code> creates separate SQL settings and temporary views, not a
+second context, executor fleet, JVM, or YARN application.</li>
+</ol>
+<p>The submit client normally stays to report YARN status. With
+<code>spark.yarn.submit.waitAppCompletion=false</code>, it can exit after submission; the
+cluster-mode driver does not depend on it. Executor launches are asynchronous:
+Spark need not wait for every requested executor before starting tasks.</p>
+<h2 id="what-changes-in-client-mode">What changes in client mode?</h2>
+<ol class="sequence"><li><b>Submit host / driver JVM → Python driver</b><span>Start orders.py on the submit host</span></li><li><b>Python driver → Submit host / driver JVM</b><span>Initialize SparkContext and driver RPC listener</span></li><li><b>Submit host / driver JVM → ResourceManager</b><span>Submit YARN application with driver host and port</span></li><li><b>ResourceManager → NodeManager</b><span>Launch AM container</span></li><li><b>NodeManager → ApplicationMaster</b><span>Start AM without the user driver</span></li><li><b>ApplicationMaster → ResourceManager</b><span>Register AM</span></li><li><b>ApplicationMaster → Submit host / driver JVM</b><span>Connect back to the existing driver</span></li><li><i>Executors launched by the AM register with D</i></li></ol>
+<p>With <code>--deploy-mode client</code>, the driver is already alive <strong>before</strong> YARN starts
+the AM. The AM negotiates and launches executors but does not run the user script.
+The submit host must stay alive and reachable from the cluster. YARN cannot restart
+that external driver. A <code>print()</code> in the main script goes to the submit host in
+client mode and to the AM container logs in cluster mode.</p>
+<h2 id="how-processes-find-each-other">How processes find each other</h2>
+<p>There is no cluster-wide search for Spark services. Each participant either starts
+with configuration, receives an address from a participant it already knows, or
+registers itself.</p>
+<table>
+<thead>
+<tr>
+<th>Discovery question</th>
+<th>Source of the address</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>How does the submit client find YARN?</td>
+<td><code>--master yarn</code> selects the manager, not a host. <code>HADOOP_CONF_DIR</code> or <code>YARN_CONF_DIR</code> points to the Hadoop client configuration. The JVM&#39;s YARN client reads <code>yarn-site.xml</code>; <code>yarn.resourcemanager.address</code> is the submission endpoint. Spark makes the configuration available to its YARN containers too.</td>
+</tr>
+<tr>
+<td>Which RM is active?</td>
+<td>In a single-RM setup, <code>yarn.resourcemanager.hostname=rm01.example.net</code> supplies the default host for the RM services unless their addresses are overridden. In HA, <code>yarn.resourcemanager.ha.rm-ids</code> and per-RM hostnames or service addresses list candidates. The YARN failover client tries configured RMs until it reaches the active one. DNS resolves names; it does not elect the active RM.</td>
+</tr>
+<tr>
+<td>How does the RM know which workers exist?</td>
+<td>Each NM registers its <code>NodeId</code> and resources with the RM and continues to heartbeat. This happens independently of any Spark application.</td>
+</tr>
+<tr>
+<td>How does the AM find the right NM?</td>
+<td>The RM&#39;s container grant identifies the assigned node and its NM RPC address. That address belongs to the <strong>NM</strong>; the executor may not exist yet.</td>
+</tr>
+<tr>
+<td>How does the AM find the driver?</td>
+<td>In cluster mode it obtains the advertised host and actual bound port from the local driver context. In client mode the submit-side scheduler backend passes the already-listening driver&#39;s <code>host:port</code> in the AM launch arguments.</td>
+</tr>
+<tr>
+<td>How does an executor find the driver?</td>
+<td>Its launch command includes <code>--driver-url</code>, for example <code>spark://CoarseGrainedScheduler@driver-1.example.net:41000</code>. The AM constructs that URL. <code>CoarseGrainedScheduler</code> names a handler in the driver JVM; <code>41000</code> is an example runtime port.</td>
+</tr>
+<tr>
+<td>How does the driver find executors?</td>
+<td><strong>Executors call the driver.</strong> Each sends <code>RegisterExecutor</code> with its ID, host, resources, and RPC endpoint reference. The driver records accepted executors. It does not ask YARN for a static executor list.</td>
+</tr>
+<tr>
+<td>How does a process find another process&#39;s data?</td>
+<td>A separate <code>RegisterBlockManager</code> advertises a data address such as <code>BlockManagerId(7, worker-a, 42001, ...)</code>. For shuffle, the driver tracks map-output locations and gives that metadata to reducers.</td>
+</tr>
+</tbody></table>
+<p>The difference is observable: YARN can show allocated containers while Spark shows
+zero registered executors. For example, a client-mode driver advertising <code>localhost</code>
+tells each executor to contact <strong>its own</strong> loopback interface. <code>spark.driver.host</code>
+must advertise a worker-reachable address; <code>spark.driver.bindAddress</code> controls
+where the driver listens locally.</p>
+<h2 id="from-a-dataframe-action-to-an-executor-thread">From a DataFrame action to an executor thread</h2>
+<p>In <code>orders.py</code>, <code>groupBy(&quot;region&quot;).count()</code> builds an <strong>aggregated DataFrame</strong>.
+It is the write that requires its contents. In contrast, <code>orders.count()</code> is an
+action that returns a number to Python. Do not assume one source-code action
+always equals one Spark job: file discovery, subqueries, or adaptive query
+execution can produce additional jobs.</p>
+<table>
+<thead>
+<tr>
+<th>Component</th>
+<th>Responsibility</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Spark SQL planner, driver JVM</td>
+<td>Optimizes the logical DataFrame operations and chooses a physical plan. In this example the same region&#39;s records generally have to meet across partitions.</td>
+</tr>
+<tr>
+<td><code>DAGScheduler</code>, driver JVM</td>
+<td>Pipelines operations that can run together and submits ready stages as task sets.</td>
+</tr>
+<tr>
+<td><code>TaskSchedulerImpl</code> / <code>TaskSetManager</code>, driver JVM</td>
+<td>Match pending task attempts to available CPU and other resources, taking locality and scheduling policy into account.</td>
+</tr>
+<tr>
+<td><code>CoarseGrainedSchedulerBackend</code>, driver JVM</td>
+<td>Tracks registered executors and free resources, creates internal <code>WorkerOffer</code>s, and sends serialized <code>TaskDescription</code>s to the chosen executor endpoints. A worker offer is an in-driver object, <strong>not a YARN allocation request</strong>.</td>
+</tr>
+<tr>
+<td><code>CoarseGrainedExecutorBackend</code> and <code>Executor</code>, executor JVM</td>
+<td>Receive <code>LaunchTask</code>, decode the task description, run the attempt on the executor thread pool, and report status.</td>
+</tr>
+<tr>
+<td><code>YarnSchedulerBackend</code> / <code>YarnAllocator</code>, driver / AM</td>
+<td>Adjust <strong>executor capacity</strong> rather than dispatching tasks. With dynamic allocation, the driver monitors backlog and idle executors; the AM negotiates changes with YARN.</td>
+</tr>
+</tbody></table>
+<p><strong>Coarse-grained</strong> means an executor retains its allocation across tasks, not that
+a whole stage must execute on one machine. The wire-level handoff looks like this:</p>
+<ol class="sequence"><li><b>NodeManager → Executor JVM</b><span>Start JVM with driver URL</span></li><li><b>Executor JVM → Driver RPC</b><span>RetrieveSparkAppConfig using a temporary RPC client</span></li><li><b>Driver RPC → Executor JVM</b><span>Return settings and resource profile</span></li><li><b>Executor JVM → Driver RPC</b><span>RegisterExecutor with endpoint reference and resources</span></li><li><b>Driver RPC → Executor JVM</b><span>Accept registration</span></li><li><b>Executor JVM → Driver RPC</b><span>RegisterBlockManager with data host and port</span></li><li><b>Executor JVM → Driver RPC</b><span>LaunchedExecutor signals readiness</span></li><li><b>Driver RPC → Executor JVM</b><span>LaunchTask over executor-initiated RPC connection</span></li><li><b>Executor JVM → Driver RPC</b><span>StatusUpdate for this task attempt</span></li></ol>
+<p>Modern Spark&#39;s executor scheduler RPC environment operates in client mode. The
+driver can send <code>LaunchTask</code> back using the executor-initiated connection; it need
+not dial a fixed executor scheduler port. The executor&#39;s <strong>block-transfer server</strong>,
+on the other hand, must accept inbound data connections. <code>RpcEnv</code> dispatches
+messages to named endpoints such as <code>CoarseGrainedScheduler</code>, <code>HeartbeatReceiver</code>,
+<code>BlockManagerMaster</code>, and <code>MapOutputTracker</code>. These are not four listening ports.
+Calls within the same RPC environment can be dispatched without TCP.</p>
+<h3 id="when-a-python-closure-is-shipped">When a Python closure is shipped</h3>
+<p>The built-in filter on <code>orders</code> is a SQL expression, not a Python closure. For
+contrast, the following alternative uses a Python RDD function:</p>
+<pre><code class="language-python">def matches_status(target):
+    return lambda row: row.status == target
+
+paid_count = orders.select(&quot;status&quot;).rdd.filter(matches_status(&quot;PAID&quot;)).count()
+</code></pre>
+<p>The lambda and the <code>target</code> binding it uses (<code>&quot;PAID&quot;</code>) form the closure. The
+<strong>running Python driver</strong>, not <code>spark-submit</code>, serializes the Python command with
+<code>CloudPickleSerializer</code> in <code>_prepare_for_python_RDD</code>. Above the broadcast threshold,
+PySpark broadcasts the serialized bytes and ships a reference. An executor-side Python
+worker deserializes the function and applies it to its partition; it does not rerun
+<code>orders.py</code> or create a <code>SparkContext</code>. The final count returns to Python as an integer.
+Mutating a captured list does not change the driver&#39;s list. Capturing a driver-only
+object such as the context can fail serialization before a task runs. A retried
+partition may execute the closure again: key external writes by logical record,
+not task attempt, if repeated writes must have the same effect.</p>
+<h2 id="follow-one-shuffle-block">Follow one shuffle block</h2>
+<p>Suppose executor A on <code>worker-a</code> produced data needed by executor B&#39;s reduce
+partition 3. The diagram shows a cross-host, pull-based shuffle without an external
+shuffle service; <code>42001</code> is A&#39;s <strong>example data port</strong>.</p>
+<ol class="sequence"><li><b>Driver / MapOutputTrackerMaster → Map executor A</b><span>Launch map task using scheduler RPC</span></li><li><b>Map executor A → HDFS</b><span>Read assigned input</span></li><li><b>HDFS → Map executor A</b><span>Input bytes</span></li><li><b>Map executor A → Map executor A</b><span>Filter, partially aggregate, partition, write local shuffle files</span></li><li><b>Map executor A → Driver / MapOutputTrackerMaster</b><span>Task finishes with MapStatus and partition sizes</span></li><li><b>Driver / MapOutputTrackerMaster → Reduce executor B</b><span>Launch task for reduce partition 3</span></li><li><b>Reduce executor B → Driver / MapOutputTrackerMaster</b><span>GetMapOutputStatuses if not already cached</span></li><li><b>Driver / MapOutputTrackerMaster → Reduce executor B</b><span>Locations and size metadata</span></li><li><b>Reduce executor B → Map executor A</b><span>FetchShuffleBlocks at worker-a:42001</span></li><li><b>Map executor A → Reduce executor B</b><span>Stream handle</span></li><li><b>Reduce executor B → Map executor A</b><span>Request chunks for the required partition</span></li><li><b>Map executor A → Reduce executor B</b><span>Shuffle bytes directly to worker-b</span></li><li><b>Reduce executor B → Reduce executor B</b><span>Finish counts by region</span></li><li><b>Reduce executor B → HDFS</b><span>Write output partition</span></li><li><b>Reduce executor B → Driver / MapOutputTrackerMaster</b><span>Report task completion and commit information</span></li></ol>
+<p>The map and reduce lanes are roles, not dedicated executor pools. The same
+executor may run both kinds of tasks. A successful write returns to Python after
+the sink&#39;s commit completes; the output rows do <strong>not</strong> travel through the driver.</p>
+<table>
+<thead>
+<tr>
+<th>Component</th>
+<th>What it knows or serves</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>MapOutputTrackerMaster</code> / <code>MapOutputTrackerWorker</code></td>
+<td>The driver records which map outputs exist, their serving locations and partition sizes. Reducers fetch and cache this metadata rather than asking the driver about every block or row.</td>
+</tr>
+<tr>
+<td><code>BlockManagerMaster</code></td>
+<td>The driver&#39;s directory of registered block managers and locations of reported storage blocks, such as cached RDD partitions. It does not proxy the contents of those blocks.</td>
+</tr>
+<tr>
+<td><code>BlockManager</code> / <code>NettyBlockTransferService</code></td>
+<td>Each executor and the driver have local block storage and a transfer listener. Cached partitions, broadcast pieces, or task-result blocks can be served from here. For shuffle, the shuffle writer, reader, and resolver manage the files; the remote fetcher connects to the advertised serving address.</td>
+</tr>
+<tr>
+<td>External shuffle service (optional)</td>
+<td>With this enabled on YARN, B normally fetches shuffle data from an NM auxiliary service on A&#39;s node, not from A&#39;s executor port. The service can serve existing files after A exits as long as the node and files survive. Local reads can avoid a network transfer altogether.</td>
+</tr>
+</tbody></table>
+<p>Two exceptions help distinguish the paths:</p>
+<ul>
+<li><strong>Python execution:</strong> Py4J connects the Python driver to its <strong>local</strong> JVM. A
+Python UDF or Python RDD function runs in a separate <strong>local executor-side Python
+worker</strong>, using a local socket and Python serialization or Arrow batches as
+appropriate. Workers can be reused; they do not rerun <code>orders.py</code>. The built-in
+filter and aggregation above need no per-row Python worker.</li>
+<li><strong>Results sent to the driver:</strong> A small task result can go inside <code>StatusUpdate</code>.
+For a larger permissible result, the executor stores a <code>TaskResultBlock</code> and sends
+a reference; the driver fetches it from the executor&#39;s block-manager port.
+<code>collect()</code> deliberately brings rows to the driver, unlike writing a dataset.</li>
+</ul>
+<h2 id="protocols-and-listening-ports">Protocols and listening ports</h2>
+<p>These are <strong>destination</strong> ports. The YARN/HDFS defaults below are for upstream
+Hadoop 3.4.1; deployments can override them. <strong>Dynamic</strong> means the service binds
+an available port and advertises the result. It does not mean peers guess it.</p>
+<table>
+<thead>
+<tr>
+<th>Initiator -&gt; listener</th>
+<th>Default destination / setting</th>
+<th>Protocol and use</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Submission client -&gt; RM</td>
+<td><code>8032</code>, <code>yarn.resourcemanager.address</code></td>
+<td>Hadoop RPC, <code>ApplicationClientProtocol</code>: obtain application ID, submit, query status.</td>
+</tr>
+<tr>
+<td>AM -&gt; RM</td>
+<td><code>8030</code>, <code>yarn.resourcemanager.scheduler.address</code></td>
+<td>Hadoop RPC, <code>ApplicationMasterProtocol</code>: register, <code>allocate()</code>/heartbeat, receive grants and completion reports, release resources, unregister.</td>
+</tr>
+<tr>
+<td>NM -&gt; RM</td>
+<td><code>8031</code>, <code>yarn.resourcemanager.resource-tracker.address</code></td>
+<td>Hadoop RPC, <code>ResourceTracker</code>: node registration, health and container status.</td>
+</tr>
+<tr>
+<td>RM or AM -&gt; NM</td>
+<td>Dynamic (<code>hostname:0</code>), <code>yarn.nodemanager.address</code></td>
+<td>Hadoop RPC, <code>ContainerManagementProtocol</code>: launch the AM or executor container. <strong>Not</strong> the NM web UI port.</td>
+</tr>
+<tr>
+<td>Executor or client-mode AM -&gt; driver</td>
+<td>Dynamic, <code>spark.driver.port</code></td>
+<td>Spark RPC over Netty/TCP: endpoint lookup, registration, task control, heartbeats and metadata. The channel also carries messages back to the executor.</td>
+</tr>
+<tr>
+<td>Driver or executor -&gt; peer block manager</td>
+<td>Dynamic, <code>spark.blockManager.port</code>; override on driver with <code>spark.driver.blockManager.port</code></td>
+<td>Spark block-transfer protocol over Netty/TCP: cached blocks, broadcast pieces, indirect results, and shuffle when the executor serves it.</td>
+</tr>
+<tr>
+<td>Reducer -&gt; optional external shuffle service</td>
+<td><code>7337</code>, <code>spark.shuffle.service.port</code></td>
+<td>Spark shuffle/block-transfer protocol. This listener is distinct from NM container-management RPC.</td>
+</tr>
+<tr>
+<td>HDFS client -&gt; NameNode / DataNode</td>
+<td>NameNode RPC configured, often <code>8020</code>; DataNode transfer <code>9866</code>, <code>dfs.datanode.address</code></td>
+<td>Hadoop RPC for namespace and block metadata; HDFS <code>DataTransferProtocol</code> for file bytes. An HDFS input block is not a Spark shuffle block.</td>
+</tr>
+<tr>
+<td>Python driver &lt;-&gt; driver JVM; executor JVM &lt;-&gt; Python worker</td>
+<td>Local, normally dynamically selected loopback ports; worker paths may use Unix-domain sockets where supported</td>
+<td>Py4J for driver API calls; local Python worker protocol for partition data. Neither is an inter-node task protocol.</td>
+</tr>
+<tr>
+<td>Browser -&gt; Spark UI / History Server / RM UI / NM UI</td>
+<td><code>4040</code> / <code>18080</code> / <code>8088</code> / <code>8042</code></td>
+<td>HTTP, or HTTPS if configured. These are observation endpoints, not scheduler or data ports.</td>
+</tr>
+</tbody></table>
+<p>YARN&#39;s RPC interfaces normally use Protocol Buffers over Hadoop IPC/TCP. Spark
+RPC and Spark block transfer are distinct Spark protocols, both implemented using
+Netty. Neither is REST or Spark Connect gRPC. <code>7077</code> is the Spark <strong>Standalone</strong>
+master port, not a Spark-on-YARN submission or driver port.</p>
+<h2 id="who-starts-monitors-and-stops-each-component">Who starts, monitors, and stops each component?</h2>
+<table>
+<thead>
+<tr>
+<th>Component</th>
+<th>Who starts it?</th>
+<th>Who monitors it?</th>
+<th>Who stops it?</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>RM</td>
+<td>Cluster service manager</td>
+<td>Cluster monitoring and HA infrastructure, if configured</td>
+<td>Operator/service manager; one Spark application never stops it.</td>
+</tr>
+<tr>
+<td>NM</td>
+<td>Cluster service manager on each worker</td>
+<td>RM tracks node heartbeats</td>
+<td>Operator/service manager; it remains after the app ends.</td>
+</tr>
+<tr>
+<td><code>spark-submit</code></td>
+<td>User or workflow scheduler</td>
+<td>Calling shell or orchestrator can observe exit status</td>
+<td>In cluster mode it exits after submission or completion according to configuration. In client mode the submit-side process hosts the driver JVM.</td>
+</tr>
+<tr>
+<td>AM, one per application attempt</td>
+<td>NM at the RM&#39;s request</td>
+<td>NM monitors the container; RM monitors AM registration and heartbeats</td>
+<td>Normally unregisters and exits; YARN can terminate its container.</td>
+</tr>
+<tr>
+<td>Driver JVM / <code>SparkContext</code></td>
+<td>Cluster: hosted in AM JVM. Client: submit-side JVM. The application initializes the context.</td>
+<td>Cluster: shares AM/container liveness. Client: external launcher owns the process; AM can detect a disconnect.</td>
+<td><code>spark.stop()</code> stops the context, not the Python interpreter. JVM exits when its owning application/launcher finishes.</td>
+</tr>
+<tr>
+<td>Python driver</td>
+<td>JVM <code>PythonRunner</code> starts the interpreter</td>
+<td><code>PythonRunner</code> waits for the exit code</td>
+<td>Script returns, raises an uncaught exception, or is forcibly terminated.</td>
+</tr>
+<tr>
+<td>Executor JVM</td>
+<td>Selected NM at the AM&#39;s request</td>
+<td>Driver receives heartbeats and task status; NM monitors the process and configured resource limits. AM receives container outcomes through the RM.</td>
+<td>Driver requests a graceful stop; allocation changes, preemption, or YARN cleanup can also remove it.</td>
+</tr>
+<tr>
+<td>Python worker</td>
+<td>Executor&#39;s worker factory, directly or through a local daemon</td>
+<td>Executor detects worker exit or broken communication. Its memory is part of the executor container&#39;s usage.</td>
+<td>Executor reuses or retires it; executor/container cleanup removes remaining workers.</td>
+</tr>
+<tr>
+<td>Task attempt</td>
+<td>Driver schedules it; executor starts it on a thread</td>
+<td>Executor reports status to driver&#39;s task scheduler</td>
+<td>Completes, fails, or is cancelled by Spark. YARN does not manage individual tasks.</td>
+</tr>
+</tbody></table>
+<h3 id="three-heartbeat-paths-during-execution">Three heartbeat paths during execution</h3>
+<table>
+<thead>
+<tr>
+<th>Sender → receiver</th>
+<th>Message</th>
+<th>Cadence</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Executor JVM → driver JVM</td>
+<td>Spark RPC <code>Heartbeat</code>: executor liveness, running-task counters, and executor metric peaks.</td>
+<td><code>spark.executor.heartbeatInterval</code>, default <strong>10 s</strong>, even if no task is running.</td>
+</tr>
+<tr>
+<td>AM → RM</td>
+<td>YARN <code>ApplicationMasterProtocol.allocate</code>: negotiates containers and receives grants and completions; no Spark task metrics.</td>
+<td><code>spark.yarn.scheduler.heartbeat.interval-ms</code>, default <strong>3 s</strong>, capped at half YARN&#39;s AM expiry interval. For pending allocations it can start at <code>spark.yarn.scheduler.initial-allocation.interval</code> (<strong>200 ms</strong>) and back off.</td>
+</tr>
+<tr>
+<td>NM → RM</td>
+<td>YARN <code>ResourceTracker.nodeHeartbeat</code>: machine health and container status across applications.</td>
+<td>Controlled by YARN, independently of the Spark heartbeat.</td>
+</tr>
+</tbody></table>
+<pre><code class="language-text">Heartbeat
+  executorId
+  accumUpdates: task attempt ID -&gt; accumulator updates for that running task
+  blockManagerId
+  executorUpdates: (stage ID, stage attempt ID) -&gt; sampled executor metric peaks
+HeartbeatResponse
+  reregisterBlockManager: whether the executor should re-register its block manager
+</code></pre>
+<p>Shuffle-read counters and JVM GC time can arrive before a long task finishes.
+<code>spark.executor.metrics.pollingInterval=0</code> samples executor metrics such as heap usage
+on the heartbeat. A positive value enables separate sampling, not faster heartbeats.
+On receipt the driver updates last-seen time and posts live metric updates through
+the scheduler and listener bus. A short task can finish between heartbeats: <strong>its
+result and final metrics use task completion, not <code>Heartbeat</code></strong>. A periodic check
+expires executors silent beyond the effective timeout (normally <code>spark.network.timeout</code>,
+default <strong>120 s</strong>); a single missed heartbeat is not itself grounds for removal.</p>
+<h2 id="shutdown-failures-and-where-to-look">Shutdown, failures, and where to look</h2>
+<ol class="sequence"><li><b>AM and driver JVM → Python driver</b><span>Last action returns after successful commit</span></li><li><b>Python driver → AM and driver JVM</b><span>spark.stop() stops SparkContext</span></li><li><b>AM and driver JVM → Executors</b><span>StopExecutor</span></li><li><b>Executors → Executors</b><span>Release resources and stop workers</span></li><li><b>Python driver → AM and driver JVM</b><span>Script exits normally</span></li><li><b>AM and driver JVM → ResourceManager</b><span>AM unregisters with final status SUCCEEDED</span></li><li><b>ResourceManager → NodeManagers</b><span>Clean up any remaining application containers</span></li><li><i>Container exits and cleanup reports are asynchronous</i></li></ol>
+<p>Finishing a <strong>job</strong> does not stop the <strong>application</strong>: executors can run the next
+job. In the normal cluster-mode path above, the Python process can still execute
+ordinary Python after <code>spark.stop()</code>. Spark also has JVM shutdown hooks for
+normal exit. YARN typically reports state <code>FINISHED</code> and final status <code>SUCCEEDED</code>;
+those are separate fields. The cluster&#39;s RMs, NMs, storage services, and any
+node-level shuffle services continue running.</p>
+<p>During <code>SparkContext.stop()</code>, the context posts its application-end event, stops
+the UI and schedulers, requests executor shutdown, and closes the listener, metrics,
+event-log, and heartbeat services. This gives the event logger a chance to finish;
+a hard crash need not leave a final event. <code>PythonRunner</code> waits for the script&#39;s exit.
+The AM reports the final outcome through <code>finishApplicationMaster</code>. Spark normally
+deletes its staging directory, not the user&#39;s output; <code>spark.yarn.preserve.staging.files</code>
+can preserve it, and a failed non-final attempt can leave it for the next AM.</p>
+<table>
+<thead>
+<tr>
+<th>Event</th>
+<th>Who recovers, and what is retried?</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Task raises or its executor-side Python worker crashes</td>
+<td>The executor reports the failure. For ordinary tasks, <code>spark.task.maxFailures=4</code> means four counted consecutive failures of the <strong>same task</strong> (three retries). Exhaustion fails the job, not necessarily the driver if the script handles the exception. Inspect the failed task and executor stderr.</td>
+</tr>
+<tr>
+<td>Executor or node is lost</td>
+<td>The driver reschedules unfinished tasks; the AM can request replacement capacity. Lost cached RDD partitions can be rebuilt from lineage if inputs survive. Infrastructure loss need not count as an application-caused task failure. Check the YARN container diagnostics for memory limits or preemption.</td>
+</tr>
+<tr>
+<td>Reducer cannot fetch shuffle output</td>
+<td><code>DAGScheduler</code> can invalidate missing map output, rerun its producers, and retry the consuming stage; <code>spark.stage.maxConsecutiveAttempts</code> defaults to 4. Executor loss alone need not lose shuffle files if an external shuffle service still serves them.</td>
+</tr>
+<tr>
+<td>Python <strong>driver process</strong> exits nonzero</td>
+<td>The AM JVM may still be alive: <code>PythonRunner</code> observes the exit, throws <code>SparkUserAppException</code>, and the AM marks the attempt failed. Look in AM container stderr for the original Python error. This is not a retry of one task.</td>
+</tr>
+<tr>
+<td>Cluster-mode <strong>AM JVM</strong> or its node crashes</td>
+<td>The JVM-side driver is gone too. If eligible, YARN launches a new attempt under the same application ID and a new attempt ID. A fresh driver runs the script from its entry point. <code>spark.yarn.maxAppAttempts</code> is subject to <code>yarn.resourcemanager.am.max-attempts</code>; it does not increase task retries. A retried script can encounter output already committed by an earlier attempt.</td>
+</tr>
+<tr>
+<td>Client-mode driver dies</td>
+<td>YARN cannot recreate the external driver. Inspect submit-host logs as well as the AM&#39;s diagnostics.</td>
+</tr>
+<tr>
+<td>User kills the application</td>
+<td><code>yarn application -kill &lt;application_id&gt;</code> terminates the YARN application and its managed containers. Cancelling one Spark job is different and need not end the application.</td>
+</tr>
+</tbody></table>
+<p>Use the symptom to choose the first place to look:</p>
+<table>
+<thead>
+<tr>
+<th>What you see</th>
+<th>Where to look first</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Application stuck before the AM runs</td>
+<td><code>yarn application -status &lt;application_id&gt;</code>: inspect queue/resources, attempt state, and diagnostics.</td>
+</tr>
+<tr>
+<td>Containers allocated but no registered executors</td>
+<td>Executor launch logs and the advertised <code>spark://CoarseGrainedScheduler@host:port</code>. Verify the driver name and port are reachable from workers.</td>
+</tr>
+<tr>
+<td>Map tasks finish; reducers report <code>FetchFailed</code></td>
+<td>The producer host and <strong>data port</strong> in the error, its shuffle files, and the executor or external shuffle service that should be serving them. Reaching the Spark UI proves nothing about this path.</td>
+</tr>
+<tr>
+<td>YARN says <code>RUNNING</code>, but no Spark job is active</td>
+<td>Open the live Spark UI&#39;s SQL, Jobs, Stages, and Executors tabs. YARN reports application-attempt state; the driver may not have submitted an action yet.</td>
+</tr>
+<tr>
+<td>Need evidence after completion</td>
+<td>Use <code>yarn applicationattempt -list &lt;application_id&gt;</code> to locate the first failing attempt. <code>yarn logs -applicationId &lt;application_id&gt;</code> reads available container logs if aggregation is enabled. The Spark History Server reconstructs the UI from Spark events if <code>spark.eventLog.enabled</code> was set and the directory is accessible. <code>spark.eventLog.logStageExecutorMetrics=true</code> also persists per-stage executor metric peaks, not every heartbeat.</td>
+</tr>
+</tbody></table>
+<h2 id="primary-references">Primary references</h2>
+<p>For the detailed launch, closure, and recovery paths in the <a href="https://github.com/apache/spark/tree/dada2a6db5d73b152d6ba16e4fe21406f86abfe3">Spark checkout used for the scenarios</a>, look for:</p>
+<table>
+<thead>
+<tr>
+<th>Source</th>
+<th>Methods or messages</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>YARN <code>Client.scala</code>, <code>ApplicationMaster.scala</code>, <code>YarnClusterScheduler.scala</code>, <code>YarnAllocator.scala</code></td>
+<td><code>prepareLocalResources</code>, <code>createContainerLaunchContext</code>, <code>createApplicationSubmissionContext</code>, <code>runDriver</code>, <code>postStartHook</code>, <code>allocateResources</code>, <code>finish</code>, <code>unregister</code>.</td>
+</tr>
+<tr>
+<td><code>python/pyspark/sql/session.py</code>, <code>python/pyspark/core/context.py</code>, JVM <code>SparkContext.scala</code></td>
+<td><code>getOrCreate</code>, <code>_initialize_context</code>, <code>newSession</code>, and <code>SparkContext.stop</code>.</td>
+</tr>
+<tr>
+<td><code>python/pyspark/core/rdd.py</code>, <code>python/pyspark/worker.py</code></td>
+<td><code>_wrap_function</code>, <code>_prepare_for_python_RDD</code>, <code>read_command</code>, and partition-function execution.</td>
+</tr>
+<tr>
+<td><code>Executor.scala</code>, <code>HeartbeatReceiver.scala</code>, <code>DAGScheduler.scala</code>, <code>EventLoggingListener.scala</code></td>
+<td><code>reportHeartBeat</code>, <code>expireDeadHosts</code>, <code>executorHeartbeatReceived</code>, <code>onExecutorMetricsUpdate</code>.</td>
+</tr>
+<tr>
+<td><code>TaskSetManager.scala</code>, <code>DAGScheduler.scala</code></td>
+<td><code>handleFailedTask</code>, <code>FetchFailed</code> handling, and <code>resubmitFailedStages</code>.</td>
+</tr>
+</tbody></table>
+<ul>
+<li><a href="https://spark.apache.org/docs/latest/running-on-yarn.html">Spark on YARN</a>, <a href="https://spark.apache.org/docs/latest/cluster-overview.html">cluster overview</a>, <a href="https://spark.apache.org/docs/latest/configuration.html#networking">networking configuration</a>, and <a href="https://spark.apache.org/docs/latest/monitoring.html">monitoring</a>.</li>
+<li><a href="https://hadoop.apache.org/docs/r3.4.1/hadoop-yarn/hadoop-yarn-site/WritingYarnApplications.html">Hadoop YARN application protocols</a>, <a href="https://hadoop.apache.org/docs/r3.4.1/hadoop-yarn/hadoop-yarn-site/ResourceManagerHA.html">ResourceManager HA and client failover</a>, and <a href="https://github.com/apache/hadoop/blob/rel/release-3.4.1/hadoop-yarn-project/hadoop-yarn/hadoop-yarn-common/src/main/resources/yarn-default.xml">YARN default addresses</a>.</li>
+<li>Spark source: <a href="https://github.com/apache/spark/blob/v4.0.1/resource-managers/yarn/src/main/scala/org/apache/spark/deploy/yarn/ApplicationMaster.scala">ApplicationMaster</a>, <a href="https://github.com/apache/spark/blob/v4.0.1/resource-managers/yarn/src/main/scala/org/apache/spark/deploy/yarn/ExecutorRunnable.scala">executor launch command</a>, and <a href="https://github.com/apache/spark/blob/v4.0.1/core/src/main/scala/org/apache/spark/deploy/PythonRunner.scala">Python driver launcher</a>.</li>
+<li>Spark source: <a href="https://github.com/apache/spark/blob/v4.0.1/core/src/main/scala/org/apache/spark/scheduler/cluster/CoarseGrainedSchedulerBackend.scala">driver scheduler backend</a>, <a href="https://github.com/apache/spark/blob/v4.0.1/core/src/main/scala/org/apache/spark/executor/CoarseGrainedExecutorBackend.scala">executor backend</a>, <a href="https://github.com/apache/spark/blob/v4.0.1/core/src/main/scala/org/apache/spark/storage/BlockManager.scala">BlockManager</a>, <a href="https://github.com/apache/spark/blob/v4.0.1/core/src/main/scala/org/apache/spark/MapOutputTracker.scala">MapOutputTracker</a>, and <a href="https://github.com/apache/spark/blob/v4.0.1/common/network-shuffle/src/main/java/org/apache/spark/network/shuffle/OneForOneBlockFetcher.java">remote shuffle block fetcher</a>.</li>
+</ul>
+</main></html>

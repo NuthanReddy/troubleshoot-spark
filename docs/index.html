@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<!-- Thesis: locate the first broken handoff, not the last error. World: a navy diagnostic bench,
+     copper for a fault, mint for recovery. Story: select a symptom, trace its owners, try the
+     reproduction, verify the outcome. Viewport: left catalog, central three-stop trace, right
+     field notes, controls beneath. Form: the user's Protocol Explorer workbench, with Spark cases. -->
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#101929">
+  <meta name="description" content="An interactive field guide to 40 PySpark on YARN scenarios: trace failures, understand the responsible components, reproduce symptoms, and verify resolutions.">
+  <title>Troubleshoot Spark · Scenario explorer</title>
+  <link rel="icon" type="image/svg+xml" href="mark.svg"><link rel="stylesheet" href="style.css">
+  <script type="module" src="app.js"></script>
+</head>
+<body>
+<a class="skip" href="#lesson">Skip to selected case</a>
+<header class="mast"><a class="brand" href="./"><img width="42" height="42" src="mark.svg" alt=""><span>Troubleshoot <strong>Spark</strong></span></a>
+  <nav aria-label="Guides"><a href="guide.html">Lifecycle guide</a><a href="scenarios.html">All scenarios</a>
+    <a href="https://github.com/NuthanReddy/troubleshoot-spark">GitHub ↗</a></nav></header>
+<div class="bench">
+  <aside id="catalog" class="catalog">
+    <div class="catalog-head"><h2>Scenario library</h2><span id="total"></span></div>
+    <label for="search">Find a symptom or exception</label><input type="search" id="search" placeholder="e.g. FetchFailed" autocomplete="off">
+    <label for="group">Topic</label><select id="group"><option value="">All topics</option></select>
+    <p id="available" aria-live="polite"></p><nav id="list" aria-label="Scenarios"></nav>
+  </aside>
+  <main id="lesson" tabindex="-1">
+    <p id="load" role="status">Loading the scenario catalog…</p>
+    <div id="content" hidden>
+      <div class="location"><span id="caseNo"></span><span aria-hidden="true"> / </span><span id="section"></span></div>
+      <h1 id="title"></h1><div id="trigger" class="intro"></div>
+      <div class="workarea">
+        <section class="trace" aria-labelledby="traceTitle">
+          <div class="sectionhead"><h2 id="traceTitle">Execution trace</h2><span class="mono">Illustrative replay</span></div>
+          <div class="stage">
+            <div id="nodes" role="group" aria-label="Choose a trace step"></div>
+            <section class="caption" aria-label="Selected step"><span id="phase"></span><div id="explain"></div></section>
+          </div>
+          <div class="controls"><button id="prev" type="button" aria-label="Previous step">←</button><button id="play" type="button">▶ Play trace</button><button id="next" type="button" aria-label="Next step">→</button><span id="counter" class="mono" aria-live="polite"></span></div>
+          <section class="route"><h3>Components involved</h3><ol id="actors"></ol></section>
+        </section>
+        <aside class="notes" aria-labelledby="notesTitle"><h2 id="notesTitle">Field notes</h2>
+          <div class="tabs" role="group" aria-label="Field note view"><button data-tab="clue">Evidence</button><button data-tab="repro">Reproduce</button><button data-tab="fix">Resolve</button></div>
+          <h3 id="noteTitle"></h3><div id="note"></div><div class="sources"><h3>Source trail</h3><ul id="sources"></ul></div>
+        </aside>
+      </div>
+      <details id="recovery" class="timeline" hidden><summary>Watch the failure and recovery</summary><img id="figure" class="figure" src="pyspark-yarn-media/shuffle-recovery.svg" alt="A shuffle fetch fails and Spark rebuilds the missing output."></details>
+      <details class="timeline"><summary>Read the full trace</summary><ol id="steps"></ol></details>
+      <nav class="sequence-nav" aria-label="Adjacent cases"><button id="previousCase">← Previous case</button><button id="nextCase">Next case →</button></nav>
+      <footer>Classic PySpark on YARN. Case studies, not live cluster telemetry. Diagnostic inspiration: <a href="https://holdenk.github.io/spark-flowchart/">Spark Advanced Topics Working Group</a>.</footer>
+    </div>
+    <noscript>JavaScript powers the explorer. <a href="scenarios.html">Read the 40 illustrated scenarios without it.</a></noscript>
+  </main>
+</div>
+</body></html>

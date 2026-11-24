@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 874 239" role="img" aria-labelledby="title desc">
+      <title id="title">A reducer loses its shuffle input</title><desc id="desc">Missing bytes do not travel through the driver. 01  FETCH Reduce executor Requests map block from the original host. 02  FAILURE Driver scheduler FetchFailed invalidates the old map location. 03  REBUILD Map executor Recomputes the lost producer partition. 04  RETRY Reduce executor Fetches the new block and finishes its task.</desc>
+      <style>text{font-family:system-ui,sans-serif}.actor{font-size:17px;font-weight:650;fill:#f1f5fd}.copy{font-size:14px;fill:#c0cde1}.small{font-size:12px;letter-spacing:1px;font-weight:700}.beat{opacity:.1;animation:step 8s linear infinite}@keyframes step{0%,23%{opacity:1}25%,100%{opacity:.08}}@media(prefers-reduced-motion:reduce){.beat{animation:none;opacity:.65}}</style>
+      <rect width="874" height="239" rx="13" fill="#0c1525"/><text x="22" y="37" fill="#eff6ff" font-size="23" font-weight="700">A reducer loses its shuffle input</text>
+      <text x="22" y="66" fill="#bac7da" font-size="15">Missing bytes do not travel through the driver.</text><path d="M30 151H838" stroke="#7995b8" stroke-width="3"/><g transform="translate(22 92)">
+      <rect width="194" height="125" rx="9" fill="#152238" stroke="#455570"/>
+      <rect class="beat" style="animation-delay:0s" x="1" y="1" width="192" height="123" rx="8" fill="none" stroke="#8bb7ff" stroke-width="3"/>
+      <circle cx="17" cy="22" r="4" fill="#8bb7ff"/><text x="29" y="26" class="small" fill="#8bb7ff">01  FETCH</text>
+      <text x="13" y="58" class="actor">Reduce executor</text><text x="13" y="85" class="copy">Requests map block</text><text x="13" y="105" class="copy">from the original host.</text></g><g transform="translate(234 92)">
+      <rect width="194" height="125" rx="9" fill="#152238" stroke="#455570"/>
+      <rect class="beat" style="animation-delay:2s" x="1" y="1" width="192" height="123" rx="8" fill="none" stroke="#ffaf91" stroke-width="3"/>
+      <circle cx="17" cy="22" r="4" fill="#ffaf91"/><text x="29" y="26" class="small" fill="#ffaf91">02  FAILURE</text>
+      <text x="13" y="58" class="actor">Driver scheduler</text><text x="13" y="85" class="copy">FetchFailed invalidates</text><text x="13" y="105" class="copy">the old map location.</text></g><g transform="translate(446 92)">
+      <rect width="194" height="125" rx="9" fill="#152238" stroke="#455570"/>
+      <rect class="beat" style="animation-delay:4s" x="1" y="1" width="192" height="123" rx="8" fill="none" stroke="#ffda87" stroke-width="3"/>
+      <circle cx="17" cy="22" r="4" fill="#ffda87"/><text x="29" y="26" class="small" fill="#ffda87">03  REBUILD</text>
+      <text x="13" y="58" class="actor">Map executor</text><text x="13" y="85" class="copy">Recomputes the lost</text><text x="13" y="105" class="copy">producer partition.</text></g><g transform="translate(658 92)">
+      <rect width="194" height="125" rx="9" fill="#152238" stroke="#455570"/>
+      <rect class="beat" style="animation-delay:6s" x="1" y="1" width="192" height="123" rx="8" fill="none" stroke="#87ded0" stroke-width="3"/>
+      <circle cx="17" cy="22" r="4" fill="#87ded0"/><text x="29" y="26" class="small" fill="#87ded0">04  RETRY</text>
+      <text x="13" y="58" class="actor">Reduce executor</text><text x="13" y="85" class="copy">Fetches the new block</text><text x="13" y="105" class="copy">and finishes its task.</text></g></svg>

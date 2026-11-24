@@ -1,0 +1,7 @@
+{
+  "name": "troubleshoot-spark",
+  "private": true,
+  "type": "module",
+  "scripts": { "build": "node tools/build.mjs", "test": "node --test tools/catalog.test.mjs" },
+  "devDependencies": { "marked": "15.0.12" }
+}

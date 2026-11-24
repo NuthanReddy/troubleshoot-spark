@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 874 239" role="img" aria-labelledby="title desc">
+      <title id="title">YARN restarts the attempt, not the stack</title><desc id="desc">Application ID stays the same. Attempt ID changes. 01  RUN Attempt 1 Python driver and AM are running the job. 02  FAILURE AM container The driver JVM is lost; task retries cannot help. 03  ALLOCATE ResourceManager Checks retry policy; grants another attempt. 04  RESTART Attempt 2 A fresh Python process enters the script again.</desc>
+      <style>text{font-family:system-ui,sans-serif}.actor{font-size:17px;font-weight:650;fill:#f1f5fd}.copy{font-size:14px;fill:#c0cde1}.small{font-size:12px;letter-spacing:1px;font-weight:700}.beat{opacity:.1;animation:step 8s linear infinite}@keyframes step{0%,23%{opacity:1}25%,100%{opacity:.08}}@media(prefers-reduced-motion:reduce){.beat{animation:none;opacity:.65}}</style>
+      <rect width="874" height="239" rx="13" fill="#0c1525"/><text x="22" y="37" fill="#eff6ff" font-size="23" font-weight="700">YARN restarts the attempt, not the stack</text>
+      <text x="22" y="66" fill="#bac7da" font-size="15">Application ID stays the same. Attempt ID changes.</text><path d="M30 151H838" stroke="#7995b8" stroke-width="3"/><g transform="translate(22 92)">
+      <rect width="194" height="125" rx="9" fill="#152238" stroke="#455570"/>
+      <rect class="beat" style="animation-delay:0s" x="1" y="1" width="192" height="123" rx="8" fill="none" stroke="#8bb7ff" stroke-width="3"/>
+      <circle cx="17" cy="22" r="4" fill="#8bb7ff"/><text x="29" y="26" class="small" fill="#8bb7ff">01  RUN</text>
+      <text x="13" y="58" class="actor">Attempt 1</text><text x="13" y="85" class="copy">Python driver and AM</text><text x="13" y="105" class="copy">are running the job.</text></g><g transform="translate(234 92)">
+      <rect width="194" height="125" rx="9" fill="#152238" stroke="#455570"/>
+      <rect class="beat" style="animation-delay:2s" x="1" y="1" width="192" height="123" rx="8" fill="none" stroke="#ffaf91" stroke-width="3"/>
+      <circle cx="17" cy="22" r="4" fill="#ffaf91"/><text x="29" y="26" class="small" fill="#ffaf91">02  FAILURE</text>
+      <text x="13" y="58" class="actor">AM container</text><text x="13" y="85" class="copy">The driver JVM is lost;</text><text x="13" y="105" class="copy">task retries cannot help.</text></g><g transform="translate(446 92)">
+      <rect width="194" height="125" rx="9" fill="#152238" stroke="#455570"/>
+      <rect class="beat" style="animation-delay:4s" x="1" y="1" width="192" height="123" rx="8" fill="none" stroke="#ffda87" stroke-width="3"/>
+      <circle cx="17" cy="22" r="4" fill="#ffda87"/><text x="29" y="26" class="small" fill="#ffda87">03  ALLOCATE</text>
+      <text x="13" y="58" class="actor">ResourceManager</text><text x="13" y="85" class="copy">Checks retry policy;</text><text x="13" y="105" class="copy">grants another attempt.</text></g><g transform="translate(658 92)">
+      <rect width="194" height="125" rx="9" fill="#152238" stroke="#455570"/>
+      <rect class="beat" style="animation-delay:6s" x="1" y="1" width="192" height="123" rx="8" fill="none" stroke="#87ded0" stroke-width="3"/>
+      <circle cx="17" cy="22" r="4" fill="#87ded0"/><text x="29" y="26" class="small" fill="#87ded0">04  RESTART</text>
+      <text x="13" y="58" class="actor">Attempt 2</text><text x="13" y="85" class="copy">A fresh Python process</text><text x="13" y="105" class="copy">enters the script again.</text></g></svg>

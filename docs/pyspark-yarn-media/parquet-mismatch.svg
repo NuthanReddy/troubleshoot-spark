@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 874 239" role="img" aria-labelledby="title desc">
+      <title id="title">A readable file fails the requested schema</title><desc id="desc">An executor retry sees the same bytes and the same mismatch. 01  PLAN Spark driver Requests integer values for the amount column. 02  INSPECT Parquet reader Finds string storage in one batch of files. 03  FAILURE Scan task Reports path, column and incompatible types. 04  REPAIR Batch writer Reads native schema; validates and rewrites.</desc>
+      <style>text{font-family:system-ui,sans-serif}.actor{font-size:17px;font-weight:650;fill:#f1f5fd}.copy{font-size:14px;fill:#c0cde1}.small{font-size:12px;letter-spacing:1px;font-weight:700}.beat{opacity:.1;animation:step 8s linear infinite}@keyframes step{0%,23%{opacity:1}25%,100%{opacity:.08}}@media(prefers-reduced-motion:reduce){.beat{animation:none;opacity:.65}}</style>
+      <rect width="874" height="239" rx="13" fill="#0c1525"/><text x="22" y="37" fill="#eff6ff" font-size="23" font-weight="700">A readable file fails the requested schema</text>
+      <text x="22" y="66" fill="#bac7da" font-size="15">An executor retry sees the same bytes and the same mismatch.</text><path d="M30 151H838" stroke="#7995b8" stroke-width="3"/><g transform="translate(22 92)">
+      <rect width="194" height="125" rx="9" fill="#152238" stroke="#455570"/>
+      <rect class="beat" style="animation-delay:0s" x="1" y="1" width="192" height="123" rx="8" fill="none" stroke="#8bb7ff" stroke-width="3"/>
+      <circle cx="17" cy="22" r="4" fill="#8bb7ff"/><text x="29" y="26" class="small" fill="#8bb7ff">01  PLAN</text>
+      <text x="13" y="58" class="actor">Spark driver</text><text x="13" y="85" class="copy">Requests integer values</text><text x="13" y="105" class="copy">for the amount column.</text></g><g transform="translate(234 92)">
+      <rect width="194" height="125" rx="9" fill="#152238" stroke="#455570"/>
+      <rect class="beat" style="animation-delay:2s" x="1" y="1" width="192" height="123" rx="8" fill="none" stroke="#ffda87" stroke-width="3"/>
+      <circle cx="17" cy="22" r="4" fill="#ffda87"/><text x="29" y="26" class="small" fill="#ffda87">02  INSPECT</text>
+      <text x="13" y="58" class="actor">Parquet reader</text><text x="13" y="85" class="copy">Finds string storage</text><text x="13" y="105" class="copy">in one batch of files.</text></g><g transform="translate(446 92)">
+      <rect width="194" height="125" rx="9" fill="#152238" stroke="#455570"/>
+      <rect class="beat" style="animation-delay:4s" x="1" y="1" width="192" height="123" rx="8" fill="none" stroke="#ffaf91" stroke-width="3"/>
+      <circle cx="17" cy="22" r="4" fill="#ffaf91"/><text x="29" y="26" class="small" fill="#ffaf91">03  FAILURE</text>
+      <text x="13" y="58" class="actor">Scan task</text><text x="13" y="85" class="copy">Reports path, column</text><text x="13" y="105" class="copy">and incompatible types.</text></g><g transform="translate(658 92)">
+      <rect width="194" height="125" rx="9" fill="#152238" stroke="#455570"/>
+      <rect class="beat" style="animation-delay:6s" x="1" y="1" width="192" height="123" rx="8" fill="none" stroke="#87ded0" stroke-width="3"/>
+      <circle cx="17" cy="22" r="4" fill="#87ded0"/><text x="29" y="26" class="small" fill="#87ded0">04  REPAIR</text>
+      <text x="13" y="58" class="actor">Batch writer</text><text x="13" y="85" class="copy">Reads native schema;</text><text x="13" y="105" class="copy">validates and rewrites.</text></g></svg>

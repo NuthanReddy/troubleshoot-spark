@@ -1,0 +1,858 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>40 troubleshooting scenarios · Troubleshoot Spark</title><link rel="stylesheet" href="style.css"><main class="reader"><nav><a href="./">← Scenario explorer</a> · <a href="guide.html">Lifecycle</a> · <a href="scenarios.html">All cases</a></nav><h1 id="pyspark-on-yarn-40-scenarios-traced-through-the-spark-source">PySpark on YARN: 40 scenarios traced through the Spark source</h1>
+<p>Why can YARN show running containers while Spark shows no executors? Why does
+losing one shuffle block sometimes repeat a stage, while killing a whole
+executor need not count against a task&#39;s retry budget? The answer depends on
+<strong>which component detects the event and what unit of work it can recover</strong>.</p>
+<p>This is a companion to <a href="guide.html">PySpark on YARN: lifecycle, networking, and discovery</a>.
+The cases follow classic PySpark batch applications through
+<a href="https://github.com/apache/spark/tree/dada2a6db5d73b152d6ba16e4fe21406f86abfe3">Apache Spark revision <code>dada2a6</code></a>.
+They are source walkthroughs, not reports from a live cluster. Examples assume
+ordinary non-barrier stages and a managed YARN ApplicationMaster (AM) unless noted.
+Log fragments and UI observations below are clues to look for, not evidence that
+any particular production incident had that cause.</p>
+<p><strong>Start with the first unexpected observation, not the last exception.</strong> The
+<a href="https://holdenk.github.io/spark-flowchart/">Spark Advanced Topics Working Group</a> inspired
+the symptom routing and several cases below; see its <a href="https://holdenk.github.io/spark-flowchart/flowchart/slow/">slow-job</a>
+and <a href="https://holdenk.github.io/spark-flowchart/flowchart/error/">error</a> paths. The examples
+here trace this Spark revision rather than assuming the same behavior in every release.</p>
+<table>
+<thead>
+<tr>
+<th>First observation</th>
+<th>Next evidence</th>
+<th>Cases</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Nothing reaches a worker</td>
+<td>Was the app submitted, the AM started, and the executor registered?</td>
+<td>01–04, 21–25</td>
+</tr>
+<tr>
+<td>One stage dominates elapsed time</td>
+<td>Compare bytes and duration across tasks. If there is only one task, inspect the plan before increasing the executor count.</td>
+<td>10, 13, 28–30, 32, 34</td>
+</tr>
+<tr>
+<td>An exception stops the action</td>
+<td>Find the first failing process, partition, and attempt: bad value, bad schema, lost block, or lost container?</td>
+<td>11–18, 24–25, 36–37</td>
+</tr>
+<tr>
+<td>Tasks are green but output is absent or wrong</td>
+<td>Check final application status, save mode, partition paths, driver commit, and data-file counts.</td>
+<td>18, 20, 22, 38–40</td>
+</tr>
+</tbody></table>
+<p><strong>Trying a case:</strong> Use small synthetic inputs, a private test application, and fresh scratch
+directories. <code>spark</code> means a classic <code>SparkSession</code>, <code>sc</code> its context, and <code>F</code> is
+<code>pyspark.sql.functions</code>. Where forcing an outage would be disruptive, a named test
+fixture or event-log replay exercises the decision without breaking a shared cluster.
+The animated figures highlight one step at a time; their numbered labels also work as still diagrams.</p>
+<h2 id="scenario-index">Scenario index</h2>
+<table>
+<thead>
+<tr>
+<th>Where the symptom appears</th>
+<th>Scenarios</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Submission and driver startup</td>
+<td><a href="#01-the-container-request-is-too-large">01. Oversized request</a> · <a href="#02-the-driver-never-initializes-sparkcontext">02. Context initialization timeout</a> · <a href="#03-yarn-grants-containers-but-spark-has-no-executors">03. Executor cannot register</a> · <a href="#04-the-client-mode-driver-disappears">04. Client driver disconnect</a></td>
+</tr>
+<tr>
+<td>Capacity and storage</td>
+<td><a href="#05-a-task-backlog-requests-more-executors">05. Backlog scales up</a> · <a href="#06-an-idle-executor-is-or-is-not-removed">06. Idle scale-down</a> · <a href="#07-a-persisted-partition-is-missing-on-the-second-action">07. Cache miss after eviction</a></td>
+</tr>
+<tr>
+<td>SQL and Python execution</td>
+<td><a href="#08-a-filter-crosses-into-python">08. Python UDF boundary</a> · <a href="#09-a-small-dimension-table-is-broadcast">09. Broadcast join</a> · <a href="#10-aqe-splits-a-skewed-join-partition">10. Skewed join</a></td>
+</tr>
+<tr>
+<td>Task, stage, and executor recovery</td>
+<td><a href="#11-a-reducer-cannot-fetch-a-shuffle-block">11. Shuffle fetch failure</a> · <a href="#12-the-same-partition-fails-on-every-attempt">12. Repeatable task exception</a> · <a href="#13-a-slow-task-gets-a-speculative-copy">13. Speculation</a> · <a href="#14-the-driver-stops-hearing-executor-heartbeats">14. Missing heartbeats</a> · <a href="#15-yarn-preempts-a-healthy-executor">15. YARN preemption</a> · <a href="#16-yarn-kills-an-executor-for-exceeding-physical-memory">16. Container memory kill</a></td>
+</tr>
+<tr>
+<td>Results, output, and application lifetime</td>
+<td><a href="#17-collect-exceeds-the-driver-result-limit">17. Oversized collect</a> · <a href="#18-all-write-tasks-succeed-but-the-job-commit-fails">18. Failed write commit</a> · <a href="#19-one-job-group-is-cancelled-in-a-shared-application">19. Job-group cancellation</a> · <a href="#20-the-cluster-mode-am-crashes-and-yarn-retries-it">20. AM attempt restart</a></td>
+</tr>
+<tr>
+<td>Deployment and Python dependencies</td>
+<td><a href="#21-every-submission-uploads-the-spark-jars">21. JAR upload</a> · <a href="#22-spark-submit-exits-before-the-report-is-ready">22. Early client exit</a> · <a href="#23-a-module-imports-on-the-driver-but-not-on-workers">23. Missing module</a> · <a href="#24-a-python-worker-rejects-the-driver-version">24. Python version mismatch</a> · <a href="#25-a-closure-captures-the-sparkcontext">25. Driver-only closure</a></td>
+</tr>
+<tr>
+<td>Jobs and partitioning</td>
+<td><a href="#26-local-iteration-still-needs-room-for-a-partition">26. Local iteration</a> · <a href="#27-taking-three-records-starts-several-jobs">27. Sparse take</a> · <a href="#28-a-window-query-sends-every-row-to-one-partition">28. Global window</a> · <a href="#29-grouping-values-moves-more-data-than-summing-them">29. Key aggregation</a> · <a href="#30-coalescing-to-one-leaves-most-cores-idle">30. One busy core</a></td>
+</tr>
+<tr>
+<td>Checkpoints, spill, and broadcast lifetime</td>
+<td><a href="#31-a-reliable-checkpoint-is-empty-until-an-action">31. Reliable checkpoint</a> · <a href="#32-a-task-spills-to-disk-and-still-succeeds">32. Sorter spill</a> · <a href="#33-a-broadcast-works-after-unpersist-but-not-after-destroy">33. Destroyed broadcast</a></td>
+</tr>
+<tr>
+<td>Adaptive plans, schemas, and file scans</td>
+<td><a href="#34-an-adaptive-shuffle-has-fewer-reader-tasks-than-expected">34. AQE coalescing</a> · <a href="#35-a-date-filter-eliminates-entire-input-partitions">35. Partition pruning</a> · <a href="#36-one-parquet-file-has-an-incompatible-column-type">36. Incompatible Parquet type</a> · <a href="#37-an-input-file-disappears-after-listing">37. Missing input</a></td>
+</tr>
+<tr>
+<td>File output on reruns</td>
+<td><a href="#38-a-rerun-succeeds-without-writing-anything">38. Existing output</a> · <a href="#39-overwrite-replaces-only-the-dates-written">39. Dynamic overwrite</a> · <a href="#40-one-successful-task-creates-three-data-files">40. File rollover</a></td>
+</tr>
+</tbody></table>
+<h2 id="submission-and-driver-startup">Submission and driver startup</h2>
+<h3 id="01-the-container-request-is-too-large">01. The container request is too large</h3>
+<p><strong>Trigger:</strong> <code>--executor-memory 8g</code> is set on a cluster with an 8 GiB maximum
+per container. Eight GiB of JVM heap <strong>plus</strong> any positive overhead already
+exceeds the limit, even on an otherwise empty cluster.</p>
+<ol>
+<li>The <strong>submit-side YARN client</strong> requests an application ID. The
+<strong>ResourceManager (RM)</strong> returns its maximum per-container capability.</li>
+<li>Spark&#39;s <code>Client.verifyClusterResources</code> adds executor heap, configured off-heap
+memory, overhead, and any explicit PySpark worker memory. It separately checks
+AM memory plus overhead.</li>
+<li>The <strong>client</strong> throws before submitting the AM launch context if either sum
+exceeds the maximum. No executor can start for this submission.</li>
+</ol>
+<p><strong>Consequence / clue:</strong> An application ID is not proof an application was submitted.
+Look for <code>above the max threshold</code> in the submit process, not an executor log.
+Waiting for queue capacity cannot fix this error; that is a different condition.
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/deploy/yarn/Client.scala#L194-L235">Submission order</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/deploy/yarn/Client.scala#L404-L431">memory calculation and checks</a></p>
+<p><strong>Components:</strong> Submit client → ResourceManager capability → client-side validation.</p>
+<p><strong>Reproduce:</strong> Find the maximum per-container memory of a private test queue. Request exactly that much executor <em>heap</em>, with positive overhead. Check whether the client gets an application ID but never sends the AM launch request.</p>
+<p><strong>Resolve / verify:</strong> Lower the sum of heap, overhead, and other counted memory to fit the maximum. The next submission should pass validation; it can still wait for currently available queue capacity.</p>
+<h3 id="02-the-driver-never-initializes-sparkcontext">02. The driver never initializes SparkContext</h3>
+<p><strong>Trigger:</strong> In <strong>cluster mode</strong>, <code>orders.py</code> blocks on an external dependency
+before <code>SparkSession.builder.getOrCreate()</code>.</p>
+<ol>
+<li>The <strong>AM</strong> starts the user application thread; <code>PythonRunner</code> starts the Python
+process. Startup logging from the script can therefore be visible already.</li>
+<li>The <strong>AM</strong> waits for the <code>SparkContext</code> initialization signal. It needs the
+driver&#39;s RPC endpoint before registering with the RM and creating the executor allocator.</li>
+<li>If <code>spark.yarn.am.waitTime</code> expires, the AM marks the attempt failed for context
+initialization. A script that exits or throws earlier follows a different path.</li>
+</ol>
+<p><strong>Consequence / clue:</strong> Zero executors is expected here: none have been requested.
+Inspect the AM/driver log for <code>Waiting for spark context initialization</code> and the
+earlier Python output. Increasing executor count does not make blocked driver code finish.
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/deploy/yarn/ApplicationMaster.scala#L496-L539">AM startup, wait, and timeout</a></p>
+<p><strong>Components:</strong> Python driver → AM context wait → application-attempt failure.</p>
+<p><strong>Reproduce:</strong> In a test script, sleep 20 seconds before <code>getOrCreate()</code> and submit with <code>spark.yarn.am.waitTime=5s</code>. Compare the timeout in the AM log with the absence of executor requests.</p>
+<p><strong>Resolve / verify:</strong> Move slow initialization after context creation when possible; otherwise allow for measured startup time. Verify AM registration, not merely an early Python print.</p>
+<h3 id="03-yarn-grants-containers-but-spark-has-no-executors">03. YARN grants containers but Spark has no executors</h3>
+<p><strong>Trigger:</strong> A client-mode driver advertises <code>localhost</code> or another address that
+the worker nodes cannot reach.</p>
+<ol>
+<li>The <strong>AM</strong> receives a container grant and asks the selected <strong>NodeManager (NM)</strong>
+to start the executor with a <code>--driver-url</code>. YARN has fulfilled a placement request,
+not proved the process can reach the driver.</li>
+<li>The <strong>executor JVM</strong> attempts to fetch the driver&#39;s configuration, then register
+its scheduler endpoint. A bad address can fail at the first RPC, before
+<code>RegisterExecutor</code> is ever sent.</li>
+<li>The <strong>driver</strong> only schedules work on registered, ready executors. A failed
+container can be replaced while capacity is still requested, but its replacement
+receives the same bad address.</li>
+</ol>
+<p><strong>Consequence / clue:</strong> Compare the YARN container list with the Spark UI Executors
+tab. Inspect the driver URL in executor logs from the <strong>worker&#39;s</strong> point of view.
+An open driver web UI is not proof the driver RPC endpoint is reachable.
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/deploy/yarn/ExecutorRunnable.scala#L196-L211">Launch arguments</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/executor/CoarseGrainedExecutorBackend.scala#L439-L465">bootstrap RPC</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/executor/CoarseGrainedExecutorBackend.scala#L102-L114">registration failure</a></p>
+<p><strong>Components:</strong> NodeManager → executor bootstrap → driver RPC endpoint.</p>
+<p><strong>Reproduce:</strong> On a multi-host test cluster, use client mode with <code>spark.driver.host=localhost</code>. Compare the driver URL in the executor launch log, the failed bootstrap, and the driver&#39;s executor count.</p>
+<p><strong>Resolve / verify:</strong> Advertise a worker-reachable submit-host address; configure the local bind address separately if necessary. Verify that registration and <code>LaunchedExecutor</code> succeed.</p>
+<h3 id="04-the-client-mode-driver-disappears">04. The client-mode driver disappears</h3>
+<p><strong>Trigger:</strong> The submit-host driver dies, or the AM loses its RPC connection
+to it without a prior orderly shutdown message.</p>
+<ol>
+<li>The <strong>client-mode AM</strong> detects the disconnect. It knows the connection was lost,
+not whether the external program finished its business logic.</li>
+<li>With <code>spark.yarn.am.clientModeTreatDisconnectAsFailed=true</code>, an <strong>unexpected</strong>
+disconnect takes the failed path. With the default <code>false</code> and no nonzero exit
+code reported, the AM can finish with <code>SUCCEEDED</code>.</li>
+<li><strong>YARN</strong> can clean up cluster containers. It cannot relaunch the external Python
+driver or recover the stack of the interrupted action.</li>
+</ol>
+<p><strong>Consequence / clue:</strong> A successful YARN final status alone does not prove the last
+write committed. Correlate the AM disconnect message with the submit-host logs and
+the sink&#39;s commit evidence. This behavior is not the cluster-mode restart in case 20.
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/deploy/yarn/ApplicationMaster.scala#L878-L897">AM disconnect decision</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/docs/running-on-yarn.md#L477-L486">configuration and default</a></p>
+<p><strong>Components:</strong> External driver → AM disconnect handler → RM final report.</p>
+<p><strong>Reproduce:</strong> In a disposable client-mode application, terminate only its own external driver without an orderly shutdown. Compare the AM diagnostics with and without <code>spark.yarn.am.clientModeTreatDisconnectAsFailed=true</code>.</p>
+<p><strong>Resolve / verify:</strong> Enable disconnect-as-failure when loss must signal failure. Choose cluster mode if YARN must own driver attempts. Verify that the final report and the actual sink commit agree.</p>
+<h2 id="capacity-and-storage">Capacity and storage</h2>
+<h3 id="05-a-task-backlog-requests-more-executors">05. A task backlog requests more executors</h3>
+<p><strong>Trigger:</strong> Dynamic allocation is enabled. A stage exposes hundreds of runnable
+partitions, but its few existing executors have no free slots.</p>
+<ol>
+<li>The <strong>driver&#39;s allocation listener</strong> observes pending tasks and starts the
+<code>spark.dynamicAllocation.schedulerBacklogTimeout</code> timer. A brief queue that
+drains before the deadline need not cause a request.</li>
+<li><code>ExecutorAllocationManager</code> estimates demand from running/pending tasks and
+executor capacity. With sustained backlog it raises the <strong>target</strong> in rounds,
+bounded by demand and configuration; it does not ask for one container per task.</li>
+<li>The <strong>YARN backend and AM</strong> request the new total from the RM. Selected NMs
+launch JVMs; the new slots become usable only after executors register.</li>
+</ol>
+<p><strong>Consequence / clue:</strong> The driver&#39;s target may rise while the live executor count
+stays flat because the queue has no capacity. Compare the driver&#39;s
+<code>because tasks are backlogged</code> log with YARN grants and actual executor additions.
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/ExecutorAllocationManager.scala#L417-L450">Demand estimate</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/ExecutorAllocationManager.scala#L501-L602">target requests and timing</a></p>
+<p><strong>Components:</strong> Backlog listener → allocation manager → AM → YARN grant → driver registration.</p>
+<p><strong>Reproduce:</strong> Use a test queue with spare capacity, dynamic allocation and shuffle tracking, one initial one-core executor, and a maximum of three. Run 12 partitions that each sleep two seconds; set the backlog timeout to one second. Compare requested and live counts over time.</p>
+<p><strong>Resolve / verify:</strong> If grants lag requests, inspect queue capacity; if requests never increase, check the target bounds and count runnable partitions. Verify newly registered slots drain pending tasks.</p>
+<h3 id="06-an-idle-executor-is-or-is-not-removed">06. An idle executor is or is not removed</h3>
+<p><strong>Trigger:</strong> A wide stage finishes. One executor has no tasks left but may still
+hold cached partitions or shuffle data needed by another job.</p>
+<ol>
+<li>The driver&#39;s <strong><code>ExecutorMonitor</code></strong> tracks idleness and deadlines. Cached blocks
+can use a different idle timeout; with shuffle tracking, an active shuffle can
+keep its owner from being eligible for removal.</li>
+<li><strong><code>ExecutorAllocationManager</code></strong> considers eligible executors, preserving the
+configured minimum and the current target. It requests decommissioning when
+enabled, otherwise removal.</li>
+<li>The <strong>backend and cluster manager</strong> carry out an accepted request. Removing
+the executor does not stop the driver or end the application.</li>
+</ol>
+<p><strong>Consequence / clue:</strong> “No active tasks” and “safe to remove” are different.
+Check the executor timeline, Storage tab, and dynamic-allocation settings before
+interpreting an idle JVM as leaked capacity. Loss of an unreplicated cached
+partition can lead to case 07. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/dynalloc/ExecutorMonitor.scala#L109-L139">Eligibility scan</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/ExecutorAllocationManager.scala#L675-L755">removal decision</a></p>
+<p><strong>Components:</strong> ExecutorMonitor → allocation manager → backend → idle container removal.</p>
+<p><strong>Reproduce:</strong> Set <code>spark.dynamicAllocation.minExecutors=0</code>, a 5 s executor idle timeout, and a long cached-executor idle timeout. Materialize a small persisted RDD without a shuffle, wait past 5 s, then unpersist it with <code>blocking=True</code> and wait again.</p>
+<p><strong>Resolve / verify:</strong> Release caches when finished, or deliberately retain them. Compare cached blocks and removal reasons before and after; an active tracked shuffle or a minimum executor count can still keep the JVM alive.</p>
+<h3 id="07-a-persisted-partition-is-missing-on-the-second-action">07. A persisted partition is missing on the second action</h3>
+<p><strong>Trigger:</strong> A Python program persists an RDD and calls <code>count()</code> twice. Between
+the actions, the only usable cached copy of partition 12 is evicted.</p>
+<ol>
+<li>On the second action, an <strong>executor task</strong> enters <code>RDD.iterator</code>; because the
+RDD is persisted, it calls <code>getOrCompute</code> for that <strong>partition</strong>.</li>
+<li>The <strong>BlockManager</strong> returns an available local or remote block on a hit. With
+no copy, Spark invokes the computation from lineage, or reads a checkpoint
+where applicable, and tries to store the result at the selected storage level.</li>
+<li>If it cannot retain the new block, the current task can still consume the
+iterator. Other partitions with valid cached copies keep using them.</li>
+</ol>
+<p><strong>Consequence / clue:</strong> <code>persist()</code> is not a guarantee against recomputation or a
+durable checkpoint. Compare cached partition counts in the Storage tab across
+the two actions; losing one partition does not imply rebuilding the entire RDD.
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/rdd/RDD.scala#L430-L465">RDD cache path</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/storage/BlockManager.scala#L1585-L1666">BlockManager hit, miss, and store paths</a></p>
+<p><strong>Components:</strong> Executor task → BlockManager lookup → cached iterator or lineage.</p>
+<p><strong>Reproduce:</strong> Persist and count a small RDD. As an all-block miss control, call <code>unpersist(blocking=True)</code>, persist it again, and count. Compare with a third count while the cache is warm. This control does not simulate eviction of just one partition.</p>
+<p><strong>Resolve / verify:</strong> Use a storage level appropriate to the reuse pattern, such as memory and disk, and materialize it. Verify cached partition coverage before the next action rather than assuming <code>persist()</code> pinned every block.</p>
+<h2 id="sql-and-python-execution">SQL and Python execution</h2>
+<h3 id="08-a-filter-crosses-into-python">08. A filter crosses into Python</h3>
+<p><strong>Trigger:</strong> Compare <code>df.filter(F.col(&quot;age&quot;) &gt; 18)</code> with a filter that calls an
+equivalent <strong>regular, non-Arrow scalar Python UDF</strong>.</p>
+<ol>
+<li>The <strong>driver&#39;s SQL planner</strong> can express the first predicate directly in the
+JVM plan. The second requires a Python evaluation operator whose result the
+filter can consume.</li>
+<li>For the UDF, an <strong>executor JVM</strong> batches and pickles the selected inputs. A
+<strong>local Python worker</strong> executes the function and returns serialized results.</li>
+<li>The <strong>executor JVM</strong> associates the returned values with their input rows and
+continues the plan. The Python driver does not make a network call per row.</li>
+</ol>
+<p><strong>Consequence / clue:</strong> Similar-looking Python source can create very different
+runtime work: the UDF adds a process boundary, conversion, and serialization.
+Compare <code>df.explain(&quot;formatted&quot;)</code> for <code>BatchEvalPython</code>; Arrow and pandas UDFs
+use other paths. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/python/EvalPythonExec.scala#L84-L90">Partition execution</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/python/BatchEvalPythonExec.scala#L40-L150">batched UDF evaluation</a></p>
+<p><strong>Components:</strong> SQL planner → JVM operator or Python evaluation operator → local worker.</p>
+<p><strong>Reproduce:</strong> Run the same nullable fixture through <code>age &gt; 18</code> and a Boolean scalar Python UDF with equivalent null handling and <code>useArrow=False</code>. Inspect the formatted plans and collect the small outputs.</p>
+<p><strong>Resolve / verify:</strong> Use a built-in expression where semantics match. Verify identical results, including null cases, and the disappearance of <code>BatchEvalPython</code>; do not infer speedup solely from syntax.</p>
+<h3 id="09-a-small-dimension-table-is-broadcast">09. A small dimension table is broadcast</h3>
+<p><strong>Trigger:</strong> An orders table joins a small regions table on <code>region_id</code>. Join
+type and size estimates, or an applicable hint, allow a broadcast hash join.</p>
+<ol>
+<li>The <strong>SQL planner</strong> selects a build side and requires it in hashed broadcast
+form. The physical plan identifies which child is built and which is streamed.</li>
+<li>The <strong>build-side exchange</strong> materializes the relation for broadcast. <strong>Executor
+tasks</strong> on the streamed side obtain the broadcast value and probe it with
+their local input rows.</li>
+<li>This join need not repartition the large input by join key. Upstream or
+downstream operators can still shuffle for their own reasons.</li>
+</ol>
+<p><strong>Consequence / clue:</strong> Broadcasting can save a large shuffle but requires space
+to build and distribute the relation. A “small” row count alone is not proof it
+fits. Look for <code>BroadcastHashJoin</code>, <code>BuildLeft</code>/<code>BuildRight</code>, and <code>BroadcastExchange</code>
+in the physical plan. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/joins/BroadcastHashJoinExec.scala#L40-L70">Distribution contract</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/joins/BroadcastHashJoinExec.scala#L133-L145">executor probe path</a></p>
+<p><strong>Components:</strong> Planner → broadcast exchange → streamed-side executor probes.</p>
+<p><strong>Reproduce:</strong> Join <code>spark.range(1000)</code> to <code>F.broadcast(spark.range(10))</code> on <code>id</code>; materialize the result and inspect the final plan. Ten matching keys are expected. Compare with an unhinted run.</p>
+<p><strong>Resolve / verify:</strong> Broadcast only a measured build side that fits. If it is too large, remove the hint and inspect the alternative plan. Verify the build side and result count, not merely a lower stage count.</p>
+<h3 id="10-aqe-splits-a-skewed-join-partition">10. AQE splits a skewed join partition</h3>
+<p><strong>Trigger:</strong> An eligible sort-merge join has one very large reducer partition
+for a popular key. Adaptive Query Execution (AQE) and skew-join handling are enabled.</p>
+<ol>
+<li>After shuffle stages materialize, the <strong>adaptive optimizer</strong> reads actual map
+output statistics. A candidate must exceed both the configured absolute
+threshold and the median partition size times the skew factor.</li>
+<li>For an eligible join side with splittable data, <strong><code>OptimizeSkewedJoin</code></strong> builds
+smaller shuffle-read specifications. Each gets the corresponding data from
+the other side; that matching data may be read repeatedly.</li>
+<li>If the rewrite satisfies the plan&#39;s distribution requirements, <strong>executors</strong>
+run the new partition pairings instead of one oversized task.</li>
+</ol>
+<p><strong>Consequence / clue:</strong> Tail latency can fall at the cost of extra reads and
+tasks. Not every big partition is splittable or eligible. Inspect the <strong>final</strong>
+adaptive plan and skewed shuffle reads, not just the pre-execution plan. Unlike
+case 13, this changes the division of work instead of duplicating the same task.
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/adaptive/OptimizeSkewedJoin.scala#L46-L193">Thresholds and split construction</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/adaptive/OptimizeSkewedJoin.scala#L213-L258">eligible joins</a></p>
+<p><strong>Components:</strong> Shuffle map statistics → adaptive optimizer → split reader tasks.</p>
+<p><strong>Reproduce:</strong> In a test session disable automatic broadcast, enable AQE/skew join, and use eight shuffle partitions. Spread a heavily repeated key over many map partitions, include several smaller keys, and join to a unique-key dimension. Lower the skew-size threshold for this small fixture and inspect the final plan after the action.</p>
+<p><strong>Resolve / verify:</strong> First verify the input skew and eligibility. If Spark splits it, compare maximum task read size/duration against the median and confirm row counts are unchanged. A hot key in one unsplittable map block may need upstream repartitioning or a different key strategy.</p>
+<h2 id="task-stage-and-executor-recovery">Task, stage, and executor recovery</h2>
+<h3 id="11-a-reducer-cannot-fetch-a-shuffle-block">11. A reducer cannot fetch a shuffle block</h3>
+<p><strong>Trigger:</strong> A reducer needs a remote map output. Its serving node or files are
+gone, and fetch retries cannot deliver the bytes. Assume a normal, durable shuffle.</p>
+<ol>
+<li>The <strong>reduce executor</strong> reports <code>FetchFailed</code>. The <strong>DAGScheduler</strong> checks that
+the report belongs to the current stage attempt; an old report need not trigger
+another recovery.</li>
+<li>The <strong>driver</strong> marks the consuming attempt failed and invalidates affected
+map-output metadata. It queues the producer and consumer stages for resubmission,
+subject to the stage-failure limit.</li>
+<li><strong>Executors</strong> regenerate missing map output. The retried consumer can now fetch
+from its new location. Already available map outputs need not all be regenerated.</li>
+</ol>
+<ol class="sequence"><li><b>Reduce executor B → Original shuffle server</b><span>Fetch map output</span></li><li><b>Original shuffle server → Reduce executor B</b><span>Output unavailable</span></li><li><b>Reduce executor B → Driver / DAGScheduler</b><span>FetchFailed for current stage attempt</span></li><li><b>Driver / DAGScheduler → Driver / DAGScheduler</b><span>Invalidate output and schedule stage recovery</span></li><li><b>Driver / DAGScheduler → Replacement map executor</b><span>Recompute missing producer partition</span></li><li><b>Replacement map executor → Driver / DAGScheduler</b><span>MapStatus with new serving location</span></li><li><b>Driver / DAGScheduler → Reduce executor B</b><span>Retry consumer on an available executor</span></li><li><b>Reduce executor B → Replacement map executor</b><span>Fetch regenerated block</span></li></ol>
+<p><strong>Consequence / clue:</strong> Retrying only the reducer against the old address would
+not help. Look for <code>FetchFailed</code> followed by stage resubmission and new map task
+attempts. Executor exit alone does not imply data loss if an external shuffle
+service still serves the files. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/DAGScheduler.scala#L4224-L4263">Invalidating map output</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/DAGScheduler.scala#L4281-L4324">resubmission or abort</a></p>
+<p><strong>Components:</strong> Reduce executor → DAGScheduler → replacement map task → retried reduce task.</p>
+<p><strong>Reproduce:</strong> Use <code>DAGSchedulerSuite</code>&#39;s <code>run trivial shuffle with fetch failure</code> fixture: finish the map stage, inject a fetch failure for the current consumer attempt, then complete the resubmitted work. Compare the producer location and stage attempt IDs before and after.</p>
+<p><strong>Resolve / verify:</strong> Correlate the missing producer block with executor, disk, and shuffle-service logs. Restore a reliable serving path; verify both regenerated map output and a successful downstream retry. More fetch retries cannot recreate a deleted file.</p>
+<p><img src="pyspark-yarn-media/shuffle-recovery.svg" alt="Shuffle recovery: a reducer cannot fetch map output; the driver invalidates its location, reruns the map, then retries the reduce."></p>
+<h3 id="12-the-same-partition-fails-on-every-attempt">12. The same partition fails on every attempt</h3>
+<p><strong>Trigger:</strong> A Python mapping function raises an ordinary data-dependent exception
+whenever it encounters one malformed record in partition 12.</p>
+<ol>
+<li>The <strong>Python worker/executor</strong> reports a task failure. The <strong>driver&#39;s
+<code>TaskSetManager</code></strong> classifies the reason and increments the counter for this
+partition index if the reason counts toward task failures.</li>
+<li>Below the limit the task goes back on the pending list. <strong>Another executor</strong>
+can run it, but sees the same input and code.</li>
+<li>Once the effective <code>spark.task.maxFailures</code> threshold is reached, the <strong>driver</strong>
+aborts the task set and the dependent job fails. With a limit of four, that is
+four counted failed attempts, not four retries after the first.</li>
+</ol>
+<p><strong>Consequence / clue:</strong> More executors will not repair a deterministic bad record.
+Compare the partition index, attempt IDs, and Python exception across hosts. The
+action fails; whether the application ends depends on what the driver does with
+that exception. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/TaskSetManager.scala#L1139-L1163">Task failure accounting and requeue</a></p>
+<p><strong>Components:</strong> Python worker → executor status → TaskSetManager → driver action.</p>
+<p><strong>Reproduce:</strong> With <code>spark.task.maxFailures=2</code>, run <code>sc.parallelize([&#39;1&#39;,&#39;bad&#39;,&#39;3&#39;], 3).map(int).collect()</code> on a test YARN application. Match the bad partition and <code>ValueError</code> across attempts.</p>
+<p><strong>Resolve / verify:</strong> Validate or quarantine bad records before conversion; record rejected rows explicitly. Re-run the fixture and account for two accepted rows and one rejection, without repeated task failures.</p>
+<h3 id="13-a-slow-task-gets-a-speculative-copy">13. A slow task gets a speculative copy</h3>
+<p><strong>Trigger:</strong> With <code>spark.speculation</code> enabled, one task continues running far
+longer than its eligible peers. No task failure has been reported.</p>
+<ol>
+<li>The <strong>scheduler</strong> periodically checks running attempts. <code>TaskSetManager</code> applies
+timing and eligibility checks and marks a qualifying task as speculatable.</li>
+<li>Given a suitable resource offer, the <strong>driver</strong> launches a second attempt for
+the same partition while the original is still running.</li>
+<li>The <strong>first accepted success</strong> wins. The driver requests cancellation of any
+still-running sibling and does not count a late duplicate as a second result.</li>
+</ol>
+<p><strong>Consequence / clue:</strong> The job consumes one logical result, but both attempts may
+already have performed external side effects. A direct database insert inside
+<code>foreachPartition</code> is not made exactly-once by speculation. Look for distinct
+attempt IDs for the same task index and a sibling killed after success.
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/TaskSetManager.scala#L1308-L1365">Speculation eligibility</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/TaskSetManager.scala#L847-L880">accept winner and kill duplicate</a></p>
+<p><strong>Components:</strong> TaskSetManager → concurrent attempts → first accepted result.</p>
+<p><strong>Reproduce:</strong> Replay <code>TaskSetManagerSuite</code>&#39;s <code>SPARK-26755 Ensure that a speculative task is submitted only once for execution</code>. Observe two attempt IDs for one partition and a single logical result. For logs from a real run, match attempts by stage <em>and</em> partition.</p>
+<p><strong>Resolve / verify:</strong> If duplicate side effects are the problem, use an idempotent key or a commit protocol; disabling speculation alone does not eliminate normal retries. Verify one committed logical record per key.</p>
+<h3 id="14-the-driver-stops-hearing-executor-heartbeats">14. The driver stops hearing executor heartbeats</h3>
+<p><strong>Trigger:</strong> An executor stops sending timely Spark heartbeats, for example during
+a prolonged process pause or a network interruption. Its NM may still be heartbeating to YARN.</p>
+<ol>
+<li>The driver&#39;s <strong><code>HeartbeatReceiver</code></strong> compares the last-seen time to its timeout
+on a periodic expiry check. One late heartbeat is not an immediate declaration
+that the node died.</li>
+<li>On expiry, the <strong>driver</strong> asynchronously asks to kill and replace the executor.
+It also notifies the coarse-grained scheduler backend to remove the executor
+rather than waiting indefinitely for an RPC disconnect.</li>
+<li>The <strong>task scheduler</strong> can now fail or reschedule attempts assigned there;
+a replacement still needs YARN capacity and must register with the driver.</li>
+</ol>
+<p><strong>Consequence / clue:</strong> <code>Executor heartbeat timed out</code> proves the <strong>driver</strong>
+did not hear from the executor in time, not that the entire host failed. Compare
+Spark timestamps with NM/container health and the executor&#39;s GC logs.
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/HeartbeatReceiver.scala#L210-L246">Driver expiry and replacement path</a></p>
+<p><strong>Components:</strong> Executor heartbeater → driver HeartbeatReceiver → removal and replacement.</p>
+<p><strong>Reproduce:</strong> Use <code>HeartbeatReceiverSuite</code>&#39;s <code>expire dead hosts</code> fixture: register a test executor, advance its test clock without an update, and run expiry. Repeat with an intervening heartbeat as the control.</p>
+<p><strong>Resolve / verify:</strong> Check GC pauses, CPU starvation and the executor-to-driver network path before increasing timeouts. Verify last-seen timestamps recover and replacements stop; a healthy NM heartbeat is not the control for Spark RPC.</p>
+<h3 id="15-yarn-preempts-a-healthy-executor">15. YARN preempts a healthy executor</h3>
+<p><strong>Trigger:</strong> The YARN scheduler reclaims an executor container for resource
+sharing while it is running tasks.</p>
+<ol>
+<li><strong>YARN</strong> ends the container and reports <code>PREEMPTED</code> to the AM through its
+allocation cycle. The Spark user&#39;s task need not have done anything wrong.</li>
+<li><strong><code>YarnAllocator</code></strong> records the container loss as <code>exitCausedByApp=false</code>
+and provides the loss reason to the <strong>driver</strong>.</li>
+<li>A running ordinary task can be retried. When that reason reaches it,
+<strong><code>TaskSetManager</code></strong> does not charge the executor loss against that task&#39;s
+normal failure budget. The AM can request replacement capacity if needed.</li>
+</ol>
+<p><strong>Consequence / clue:</strong> Work already done by interrupted tasks can be lost even
+though the failure is not charged to the code. Check for <code>was preempted</code> in the
+AM log before chasing a Python exception or increasing <code>spark.task.maxFailures</code>.
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/deploy/yarn/YarnAllocator.scala#L849-L887">YARN preemption classification</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/TaskEndReason.scala#L261-L276">task failure counting rule</a></p>
+<p><strong>Components:</strong> RM completion report → YarnAllocator → driver task-loss classification.</p>
+<p><strong>Reproduce:</strong> Use the completed-container fixture in <code>YarnAllocatorSuite</code> (SPARK-26269). Feed a completion with <code>PREEMPTED</code> and inspect the allocator&#39;s reason; compare it with the memory-limit completion in case 16. No real queue preemption is needed.</p>
+<p><strong>Resolve / verify:</strong> If losses repeat, inspect queue policy and usable capacity, not just task code. Check that replacement executors register and lost work finishes without repeatedly charging application failures.</p>
+<h3 id="16-yarn-kills-an-executor-for-exceeding-physical-memory">16. YARN kills an executor for exceeding physical memory</h3>
+<p><strong>Trigger:</strong> The executor&#39;s container exceeds its enforced physical-memory
+limit. Python workers, JVM heap, and native allocations can contribute; a JVM
+<code>OutOfMemoryError</code> is not required.</p>
+<ol>
+<li>The <strong>NM/YARN</strong> terminates the container and supplies a physical-memory exit
+status and diagnostics to the <strong>AM</strong>.</li>
+<li><strong><code>YarnAllocator</code></strong> recognizes <code>KILLED_EXCEEDED_PMEM</code>, extracts available
+usage details, and marks the exit <code>exitCausedByApp=true</code>, unlike preemption.</li>
+<li>The <strong>driver</strong> removes the executor. Ordinary tasks lost for this reason can
+count toward their failure limits; running the same oversized partition on
+an identical replacement can repeat the kill.</li>
+</ol>
+<p><strong>Consequence / clue:</strong> Inspect the container&#39;s physical usage/limit and partition
+sizes, not just the Spark UI&#39;s storage-memory chart. Contrast case 01 (the request
+was never accepted) and case 15 (capacity was reclaimed, not exceeded).
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/deploy/yarn/YarnAllocator.scala#L888-L907">YARN memory exit classification</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/TaskEndReason.scala#L261-L276">task failure counting rule</a></p>
+<p><strong>Components:</strong> NodeManager memory enforcement → AM diagnostics → executor/task loss.</p>
+<p><strong>Reproduce:</strong> In the same allocator fixture, submit a synthetic <code>KILLED_EXCEEDED_PMEM</code> completion. Correlate its classification with a historical container report showing physical memory usage. Do not exhaust a shared node to reproduce this.</p>
+<p><strong>Resolve / verify:</strong> Measure container RSS, including Python and native work, and locate oversized partitions. Reduce the working set or adjust overhead within YARN limits. Verify comparable data completes without another physical-memory kill.</p>
+<h2 id="results-output-and-application-lifetime">Results, output, and application lifetime</h2>
+<h3 id="17-collect-exceeds-the-driver-result-limit">17. Collect exceeds the driver result limit</h3>
+<p><strong>Trigger:</strong> A PySpark RDD <code>collect()</code> requests every record. Suppose 100
+partitions each return about 6 MiB serialized, with <code>spark.driver.maxResultSize</code>
+set to 512 MiB. Every partition fits individually; their total does not.</p>
+<ol>
+<li><strong>Executors</strong> serialize partition results. A small result can travel in the
+task status message. A larger <em>permitted</em> result may be stored as a block, with
+a reference sent to the driver instead.</li>
+<li>The driver&#39;s <strong><code>TaskResultGetter</code> / <code>TaskSetManager</code></strong> account for serialized
+result sizes. For this result stage, the cumulative positive limit applies
+regardless of direct or indirect transport.</li>
+<li>Once the total exceeds the limit, the <strong>driver</strong> aborts the task set. Python
+does not receive a partial list as a successful <code>collect()</code>.</li>
+</ol>
+<p><strong>Consequence / clue:</strong> The driver error refers to the <strong>total size of serialized
+results</strong>. Spreading identical output over more partitions or fetching via block
+managers does not reduce that total. A limit of zero disables the guard, not the
+driver&#39;s physical memory limit. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/executor/Executor.scala#L1018-L1043">Executor result transport</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/TaskSetManager.scala#L810-L827">cumulative guard</a></p>
+<p><strong>Components:</strong> Executor result serialization → TaskResultGetter → cumulative driver guard.</p>
+<p><strong>Reproduce:</strong> Use a fresh test context with <code>spark.driver.maxResultSize=1m</code>. Collect several partitions of small, distinct byte arrays well under 1 MiB each but over 1 MiB together. Read the error&#39;s serialized-byte total; compression affects the required sample size.</p>
+<p><strong>Resolve / verify:</strong> Aggregate or write distributed output and return only a bounded summary. Confirm the expected aggregate without materializing all rows in Python. Raising the limit does not create driver memory.</p>
+<h3 id="18-all-write-tasks-succeed-but-the-job-commit-fails">18. All write tasks succeed but the job commit fails</h3>
+<p><strong>Trigger:</strong> A V1 Hadoop-backed file write, such as a Parquet write using that
+path, finishes its output tasks but encounters a filesystem error during <code>commitJob</code>.</p>
+<ol>
+<li>On each <strong>executor</strong>, the writer creates task output and commits that task
+through the commit protocol. Successful commit messages return to the driver.</li>
+<li>The <strong>driver&#39;s <code>FileFormatWriter</code></strong> invokes job-level commit using those
+messages. The <strong>Hadoop committer/filesystem</strong> now has to finalize the output.</li>
+<li>If this throws, Spark attempts <strong>job abort/cleanup</strong> and propagates the failure.
+A task failure earlier in the sequence would instead enter task-abort handling.</li>
+</ol>
+<p><strong>Consequence / clue:</strong> Green tasks do not prove the dataset was published.
+Check driver commit/abort logs and the destination before retrying. Cleanup is
+committer- and filesystem-dependent; do not assume universal atomic rollback or
+extend this V1 behavior to every transactional table format.
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/FileFormatWriter.scala#L292-L304">Driver commit</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/FileFormatWriter.scala#L214-L222">write failure handling</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/internal/io/HadoopMapReduceCommitProtocol.scala#L215-L289">Hadoop commit protocol</a></p>
+<p><strong>Components:</strong> Executor task commit → driver job commit → commit protocol abort.</p>
+<p><strong>Reproduce:</strong> Use <code>ParquetIOSuite</code>&#39;s <code>JobCommitFailureParquetOutputCommitter</code> with a scratch output path. Its injected failure is in <code>commitJob</code>, not <code>commitTask</code>. Compare successful task commits with the driver exception.</p>
+<p><strong>Resolve / verify:</strong> Correct the filesystem or committer cause and inspect partial output before retrying. Verify a fresh read of the intended dataset after successful job commit, not just green tasks.</p>
+<h3 id="19-one-job-group-is-cancelled-in-a-shared-application">19. One job group is cancelled in a shared application</h3>
+<p><strong>Trigger:</strong> Two clients share a Spark application, or two submitting threads
+run jobs under different group IDs. The driver calls <code>sc.cancelJobGroup(&quot;report-A&quot;)</code>.</p>
+<ol>
+<li>The <strong>DAGScheduler</strong> uses the captured job-group property to find matching
+jobs. The ordinary cancellation targets the group currently submitted; it
+does not permanently forbid reuse of the same group ID.</li>
+<li>For a matching job, the <strong>driver</strong> finds running stages that belong <strong>only</strong>
+to that job and asks the task scheduler to kill their attempts. A stage
+still needed by another active job is not cancelled on that basis.</li>
+<li>The cancelled job&#39;s <strong>caller</strong> receives failure/cancellation. The
+<code>SparkContext</code>, unrelated jobs, and YARN application can continue.</li>
+</ol>
+<p><strong>Consequence / clue:</strong> A job marked cancelled beside a still-running shared
+stage is consistent. Killing the entire YARN application would have a much wider
+effect. Check group IDs and stage ownership in addition to the app&#39;s YARN state.
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/DAGScheduler.scala#L2471-L2500">Group matching</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/scheduler/DAGScheduler.scala#L5276-L5312">independent-stage cancellation</a></p>
+<p><strong>Components:</strong> Driver thread&#39;s job group → DAGScheduler → targeted stage cancellation.</p>
+<p><strong>Reproduce:</strong> Run two bounded slow jobs from separate submitting threads with distinct group IDs. Set the group in each submitting thread and cancel only one while both are active. Compare job states in the UI.</p>
+<p><strong>Resolve / verify:</strong> Bind group IDs to requests and clear thread-local properties when reusing threads. Verify the chosen action was cancelled, the unrelated action completed, and the same context accepts another job.</p>
+<h3 id="20-the-cluster-mode-am-crashes-and-yarn-retries-it">20. The cluster-mode AM crashes and YARN retries it</h3>
+<p><strong>Trigger:</strong> The <strong>cluster-mode</strong> AM/driver container dies before it can report
+success. YARN policy and remaining attempt budget allow another attempt.</p>
+<ol>
+<li>The <strong>RM</strong> detects the lost attempt. <code>spark.yarn.maxAppAttempts</code> cannot grant
+more attempts than <code>yarn.resourcemanager.am.max-attempts</code>. Spark&#39;s AM shutdown
+path distinguishes terminal cleanup from leaving room for a retry.</li>
+<li>For an eligible retry, <strong>YARN</strong> starts a fresh AM container for the <strong>same
+application ID</strong> with a <strong>new attempt ID</strong>. It does not restore the old JVM.</li>
+<li>The new <strong>AM and Python driver</strong> run the user application from its entry point,
+create a new context, and obtain executors. Durable files may survive; Python
+variables, cached driver state, and the interrupted call stack do not.</li>
+</ol>
+<ol class="sequence"><li><b>AM / driver attempt 1 → YARN ResourceManager</b><span>Attempt lost without successful completion</span></li><li><b>YARN ResourceManager → YARN ResourceManager</b><span>Check attempt policy and remaining budget</span></li><li><b>YARN ResourceManager → Selected NodeManager</b><span>Launch a new AM container</span></li><li><b>Selected NodeManager → AM / driver attempt 2</b><span>Start new JVM and user script</span></li><li><b>AM / driver attempt 2 → YARN ResourceManager</b><span>Register new attempt for the same application</span></li></ol>
+<p><strong>Consequence / clue:</strong> If the first attempt appended records before it died,
+rerunning the script can append them again unless the application or sink prevents
+duplicates. Correlate logs by <strong>attempt ID</strong>, not just application ID. This is a
+whole-driver restart, not the task retry in case 12 or the stage repair in case 11.
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/deploy/yarn/YarnRMClient.scala#L125-L135">Attempt ceiling</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/deploy/yarn/ApplicationMaster.scala#L225-L254">cleanup and unregister policy</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/deploy/yarn/ApplicationMaster.scala#L496-L539">driver startup</a></p>
+<p><strong>Components:</strong> Lost AM/driver container → ResourceManager → fresh application attempt.</p>
+<p><strong>Reproduce:</strong> In a disposable managed YARN test with two AM attempts allowed, log an entry-point marker and run a bounded, long-enough action. Have the mini-cluster harness fail <strong>only the first AM container</strong>, not the application. Use <code>yarn applicationattempt -list</code> to compare attempt IDs and entry markers.</p>
+<p><strong>Resolve / verify:</strong> Fix the AM loss reason and make publication idempotent across attempts. Verify one logical output under the same application ID even though the script entered twice. Changing task retry limits cannot restore the old driver.</p>
+<p><img src="pyspark-yarn-media/am-restart.svg" alt="AM restart: attempt 1 loses its driver, YARN starts attempt 2, and the script begins again with no in-memory state."></p>
+<h2 id="deployment-and-python-dependencies">Deployment and Python dependencies</h2>
+<h3 id="21-every-submission-uploads-the-spark-jars">21. Every submission uploads the Spark JARs</h3>
+<p><strong>Trigger:</strong> Even a tiny <code>orders.py</code> takes a long time to submit. Neither <code>spark.yarn.archive</code>
+nor <code>spark.yarn.jars</code> is configured.</p>
+<ol>
+<li>The <strong>submit-side YARN client</strong> finds the local Spark JAR directory, creates a temporary
+ZIP, and adds its readable <code>.jar</code> files.</li>
+<li>The client stages that ZIP and declares it as an <code>ARCHIVE</code> resource named <code>__spark_libs__</code>.
+The <strong>NodeManager</strong> localizes it for the container; the ResourceManager does not stream JARs.</li>
+<li>A reusable archive on cluster-accessible storage changes this path: Spark declares the
+supplied archive instead of rebuilding it from the local installation for every submission.</li>
+</ol>
+<p><strong>Consequence / clue:</strong> Look for <code>falling back to uploading libraries under SPARK_HOME</code> in the
+<strong>submission</strong> log. This delay precedes executor allocation; adding executors won&#39;t shorten it.
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/deploy/yarn/Client.scala#L659-L734">Archive selection and fallback upload</a></p>
+<p><strong>Components:</strong> Submit-side Client → staging filesystem → NodeManager localizer.</p>
+<p><strong>Reproduce:</strong> Submit a minimal script without either Spark-JAR setting. Inspect the fallback warning and staged archive; then submit the same script using a compatible prebuilt <code>spark.yarn.archive</code> on HDFS.</p>
+<p><strong>Resolve / verify:</strong> Store versioned, cluster-readable Spark archives with JARs at the archive root. Verify the fallback warning disappears and the AM loads the intended classes. Measure submission time separately from executor startup.</p>
+<h3 id="22-spark-submit-exits-before-the-report-is-ready">22. Spark-submit exits before the report is ready</h3>
+<p><strong>Trigger:</strong> A shell pipeline starts a downstream reader as soon as a cluster-mode
+<code>spark-submit</code> command exits zero. It used <code>spark.yarn.submit.waitAppCompletion=false</code>.</p>
+<ol>
+<li>The <strong>client</strong> submits the application and obtains an application ID.</li>
+<li>On the fire-and-forget path without a connected launcher backend, the client reads one
+application report. It throws if YARN already reports <code>FAILED</code> or <code>KILLED</code>; otherwise it
+can exit without waiting for a terminal result.</li>
+<li>The <strong>AM, driver, and executors</strong> continue independently. The output commit and even a
+later application failure can occur after the shell has started its next command.</li>
+</ol>
+<p><strong>Consequence / clue:</strong> A submit log ending with an <code>ACCEPTED</code> or <code>RUNNING</code> report is not a
+completion receipt. Use the application ID to check final status, or retain completion monitoring
+when the next step depends on published output. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/resource-managers/yarn/src/main/scala/org/apache/spark/deploy/yarn/Client.scala#L1378-L1412">Client monitoring decision</a></p>
+<p><strong>Components:</strong> Shell → Spark YARN client → application report → downstream workflow.</p>
+<p><strong>Reproduce:</strong> Submit a script with a brief delay before a scratch output write, using <code>spark.yarn.submit.waitAppCompletion=false</code>. Record shell exit, YARN state, and first readable output. Repeat with the setting true.</p>
+<p><strong>Resolve / verify:</strong> Make the consumer wait for terminal success and the sink&#39;s publication condition, or retain client monitoring. Verify the downstream reader cannot start against an incomplete dataset.</p>
+<h3 id="23-a-module-imports-on-the-driver-but-not-on-workers">23. A module imports on the driver but not on workers</h3>
+<p><strong>Trigger:</strong> The driver imports a local pure-Python helper, but an RDD function doing
+<code>import pricing_rules</code> raises <code>ModuleNotFoundError</code> on an executor.</p>
+<ol>
+<li>The <strong>driver</strong> and executor-side <strong>Python workers</strong> have separate import paths. An import
+succeeding on the AM node establishes nothing about the worker nodes.</li>
+<li>For future tasks, <code>sc.addPyFile(&quot;hdfs:///deps/pricing_rules_v2.zip&quot;)</code> registers the file
+and records its archive name among the Python includes. The ZIP must contain an importable
+<code>pricing_rules</code> package or module.</li>
+<li>Worker setup adds its localized Spark-files root and included archives to <code>sys.path</code>
+before executing the Python command. This distributes Python code, not a Python interpreter.</li>
+</ol>
+<p><strong>Consequence / clue:</strong> Compare the module path on the driver with the import traceback in
+executor logs. Register the dependency before the affected action; adding the same path again
+is not an in-place package upgrade. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/python/pyspark/core/context.py#L1965-L1996">Driver registration</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/python/pyspark/worker_util.py#L196-L226">worker path setup</a></p>
+<p><strong>Components:</strong> Driver include list → executor-local SparkFiles path → Python import.</p>
+<p><strong>Reproduce:</strong> Use a unique test module name installed only beside the driver script. Import it <em>inside</em> an RDD function. After observing the worker import error, put the module at the root of a versioned ZIP and pass it with <code>--py-files</code> on the next submission.</p>
+<p><strong>Resolve / verify:</strong> Distribute the pure-Python dependency rather than editing one host. Return the module&#39;s version from each partition and verify the worker results, not just the driver&#39;s import.</p>
+<h3 id="24-a-python-worker-rejects-the-driver-version">24. A Python worker rejects the driver version</h3>
+<p><strong>Trigger:</strong> A built-in DataFrame aggregation succeeds, but a Python RDD task fails when
+the AM&#39;s Python driver uses Python 3.11 and the worker starts Python 3.12.</p>
+<ol>
+<li>The <strong>executor JVM</strong> starts a Python worker for the Python operation and supplies the
+expected driver Python version during initialization.</li>
+<li>The <strong>worker</strong> compares it with its own <code>major.minor</code> before deserializing the user
+function. The mismatch raises <code>PYTHON_VERSION_MISMATCH</code>; the function body never runs.</li>
+<li>A retry on a node with the same mismatch fails for the same reason. A JVM-only SQL
+operation can succeed because it does not perform this worker handshake.</li>
+</ol>
+<p><strong>Consequence / clue:</strong> The error names the worker and driver versions. Check the executables
+selected <strong>inside the containers</strong>; Python patch-level differences alone are not this check.
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/python/pyspark/worker.py#L141-L174">Worker initialization order</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/python/pyspark/worker_util.py#L135-L151">version comparison</a></p>
+<p><strong>Components:</strong> Driver version metadata → executor Python launcher → worker version check.</p>
+<p><strong>Reproduce:</strong> In a private test environment with two supported Python minors already installed, select one for the driver and the other for executors. Run a JVM-only expression, then <code>sc.parallelize([1]).map(lambda x: x+1).collect()</code>.</p>
+<p><strong>Resolve / verify:</strong> Point the containers to a consistent interpreter or packaged environment. Return <code>sys.version_info[:2]</code> from a worker and compare it to the driver, then verify the Python action returns <code>[2]</code>.</p>
+<h3 id="25-a-closure-captures-the-sparkcontext">25. A closure captures the SparkContext</h3>
+<p><strong>Trigger:</strong> A Python RDD transformation contains <code>lambda row: (sc.applicationId, row)</code>.
+The programmer only wanted a string, but the function references the driver context itself.</p>
+<ol>
+<li>When preparing the Python command, the <strong>driver</strong> serializes the function and captured
+objects with <code>CloudPickleSerializer</code>.</li>
+<li><code>SparkContext.__getnewargs__</code> deliberately rejects pickling the context. Preparation
+fails <strong>on the driver</strong>, before an executor can run this function.</li>
+<li>Reading <code>app_id = sc.applicationId</code> on the driver and capturing only <code>app_id</code> removes
+that dependency. The worker receives data, not access to the driver&#39;s scheduler.</li>
+</ol>
+<p><strong>Consequence / clue:</strong> Look for <code>CONTEXT_ONLY_VALID_ON_DRIVER</code> in the serialization traceback,
+not four failed task attempts. Increasing the task retry limit does not fix this error.
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/python/pyspark/core/rdd.py#L5106-L5136">Command serialization</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/python/pyspark/core/context.py#L490-L495">context guard</a></p>
+<p><strong>Components:</strong> Driver closure serializer → SparkContext pickling guard; no worker execution.</p>
+<p><strong>Reproduce:</strong> Evaluate <code>sc.parallelize([1]).map(lambda x: (sc.applicationId, x)).collect()</code>. Then assign <code>app_id = sc.applicationId</code> outside the lambda and repeat using <code>app_id</code>.</p>
+<p><strong>Resolve / verify:</strong> Capture the small value rather than <code>sc</code>, <code>spark</code>, or an object holding either. Verify the second closure returns the expected pair and the first failed before the task could execute.</p>
+<h2 id="jobs-and-partitioning">Jobs and partitioning</h2>
+<h3 id="26-local-iteration-still-needs-room-for-a-partition">26. Local iteration still needs room for a partition</h3>
+<p><strong>Trigger:</strong> A report switches from <code>rdd.collect()</code> to <code>rdd.toLocalIterator()</code> to avoid
+holding the whole result, but one exceptionally large partition still overwhelms the driver.</p>
+<ol>
+<li>As the <strong>Python consumer</strong> requests more data, the <strong>driver JVM</strong> submits a job for a
+partition. The partition computation materializes its result as an array.</li>
+<li>The JVM waits for that partition and serves its elements to Python over a local socket.
+With <code>prefetchPartitions=True</code>, it can submit the next partition job before finishing this one.</li>
+<li>Consumption can stop early. If the consumer instead calls <code>list()</code> on the iterator,
+Python again retains the entire result.</li>
+</ol>
+<p><strong>Consequence / clue:</strong> Expect successive partition jobs, not one RPC per row. Budget for the
+largest partition (potentially two with prefetch); limiting driver retention is not a guarantee
+that an individual partition result fits. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/api/python/PythonRDD.scala#L262-L306">Partition submission and handoff</a></p>
+<p><strong>Components:</strong> Python iterator → driver partition job → executor result → local socket.</p>
+<p><strong>Reproduce:</strong> Iterate over <code>sc.parallelize(range(8), 4).toLocalIterator(prefetchPartitions=False)</code> one element at a time and observe jobs. Repeat with prefetch on and compare the timing of the next partition job.</p>
+<p><strong>Resolve / verify:</strong> Consume incrementally; do not rebuild a list. If a single partition is oversized, change partitioning or keep processing distributed. Verify bounded partition sizes and equivalent output counts.</p>
+<h3 id="27-taking-three-records-starts-several-jobs">27. Taking three records starts several jobs</h3>
+<p><strong>Trigger:</strong> <code>rdd.filter(is_late).take(3)</code> runs on an RDD whose early partitions contain
+no late records. The Jobs tab shows multiple successful jobs.</p>
+<ol>
+<li>PySpark&#39;s <strong>driver</strong> starts by asking <code>runJob</code> to scan one partition. Each selected
+partition returns at most the number of records still needed.</li>
+<li>If the batch found nothing, the driver increases the number of partitions to try; if it
+found too few, it estimates the next batch from the hit rate.</li>
+<li>It stops when it has enough records or has scanned every partition, and returns at most
+three records. A shuffle dependency upstream can still require broader map-side work.</li>
+</ol>
+<p><strong>Consequence / clue:</strong> Several jobs at the same <code>take</code> call site, with no failed attempts,
+can be intentional. <code>take(3)</code> limits the result size, not how much input must be searched.
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/python/pyspark/core/rdd.py#L2680-L2720">PySpark RDD.take scan loop</a></p>
+<p><strong>Components:</strong> Python take loop → repeated runJob calls → bounded partition results.</p>
+<p><strong>Reproduce:</strong> Run <code>sc.parallelize(range(100), 100).filter(lambda x: x &gt;= 90).take(3)</code>. Compare with <code>x &lt; 10</code> on the same input. Both return three rows, but the late-match run scans farther.</p>
+<p><strong>Resolve / verify:</strong> For an inspection sample, accept the extra search. For recurring large scans, prune or index the source where possible. Verify reduced input work rather than raising the requested sample size.</p>
+<h3 id="28-a-window-query-sends-every-row-to-one-partition">28. A window query sends every row to one partition</h3>
+<p><strong>Trigger:</strong> A report computes a row number ordered by time, without specifying a
+window partition. There are eight input partitions but one task at the window.</p>
+<ol>
+<li>The <strong>driver&#39;s <code>WindowExecBase</code></strong> requires <code>AllTuples</code> for an empty partition
+specification. With multiple input partitions Spark inserts an exchange to bring all rows
+together and sorts the input as required.</li>
+<li>A single <strong>executor task</strong> evaluates the global window. Adding workers or calling
+<code>repartition(8)</code> <em>before</em> the window cannot remove the distribution requirement.</li>
+<li>A keyed window requires clustered distribution by key instead. It is a valid alternative
+only if the intended answer is a ranking <strong>per key</strong> rather than a global ranking.</li>
+</ol>
+<p><strong>Consequence / clue:</strong> <code>Exchange SinglePartition</code> and the <code>No Partition Defined</code> warning
+point to operator semantics, not missing YARN capacity. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/window/WindowExecBase.scala#L35-L47">Window distribution</a>
+· <a href="https://holdenk.github.io/spark-flowchart/details/singlepartition/">upstream diagnostic topic</a></p>
+<p><strong>Components:</strong> Window planner → SinglePartition exchange → one executor window task.</p>
+<p><strong>Reproduce:</strong> Use <code>df = spark.range(64, numPartitions=8)</code> and <code>row_number().over(Window.orderBy(&#39;id&#39;))</code> (from <code>pyspark.sql.functions</code> and <code>pyspark.sql.window</code>). Select the rank and collect the small result so the optimizer cannot prune the window. Inspect the exchange and task count.</p>
+<p><strong>Resolve / verify:</strong> If ranks should restart per customer, use <code>Window.partitionBy(&#39;customer&#39;).orderBy(&#39;id&#39;)</code> on a keyed fixture. Verify rank 1 per customer and the disappearance of the global-window requirement. Do not change the key if the required rank is genuinely global.</p>
+<h3 id="29-grouping-values-moves-more-data-than-summing-them">29. Grouping values moves more data than summing them</h3>
+<p><strong>Trigger:</strong> A pair RDD has many <code>(region, amount)</code> records per input partition. The code
+uses <code>groupByKey().mapValues(sum)</code>; the only desired result is one sum per region.</p>
+<ol>
+<li>PySpark&#39;s <strong>map-side Python workers</strong> can combine values locally for <code>groupByKey</code>, but
+the combiner is a <strong>list of values</strong>. Local packing does not eliminate the amounts.</li>
+<li>With <code>reduceByKey(add)</code>, the map-side combiner keeps a <strong>partial sum</strong> per key instead.
+When repartitioning is necessary, workers shuffle the partials and merge them by key.</li>
+<li>Repeated keys within a partition can therefore reduce shuffle volume substantially.
+Changing to <code>reduceByKey</code> is appropriate for an associative, commutative reduction,
+not for callers that need all original values.</li>
+</ol>
+<p><strong>Consequence / clue:</strong> Compare shuffle bytes, not just final row counts or task counts.
+A single hot key still belongs to one final reduce partition. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/python/pyspark/core/rdd.py#L4019-L4049">Grouping combiners</a>
+· <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/python/pyspark/core/rdd.py#L3366-L3379">reduceByKey delegation</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/python/pyspark/core/rdd.py#L3838-L3856">local and post-shuffle merges</a></p>
+<p><strong>Components:</strong> Python local combiner → shuffle → per-key merger.</p>
+<p><strong>Reproduce:</strong> Build <code>pairs = sc.parallelize(range(20000), 8).map(lambda i: (i % 4, 1))</code>. Compare <code>pairs.groupByKey().mapValues(sum)</code> and <code>pairs.reduceByKey(lambda a,b: a+b)</code>. Materialize both and read shuffle metrics.</p>
+<p><strong>Resolve / verify:</strong> For this sum, use <code>reduceByKey</code>. Verify all four totals are 5,000. Compare measured shuffle bytes on the same inputs rather than assuming a fixed reduction ratio.</p>
+<h3 id="30-coalescing-to-one-leaves-most-cores-idle">30. Coalescing to one leaves most cores idle</h3>
+<p><strong>Trigger:</strong> A narrow, uncached RDD pipeline ends with <code>coalesce(1)</code> before a save.
+YARN shows plenty of executors, but one task does most of the work.</p>
+<ol>
+<li>Without a shuffle the <strong>driver</strong> constructs a <code>CoalescedRDD</code> with a narrow dependency.
+The one output partition can walk many parent partitions.</li>
+<li>One <strong>executor task</strong> can consequently evaluate the narrow upstream chain and write the
+output. There are no other ready partitions of that stage for idle cores to take.</li>
+<li>Shuffling (for example, <code>repartition(1)</code>) lets upstream tasks run in parallel before a
+<strong>single final partition</strong>. It buys parallelism at the cost of a shuffle, not a parallel final writer.</li>
+</ol>
+<p><strong>Consequence / clue:</strong> Compare the stage DAG and number of tasks before requesting more
+containers. A one-task stage is a work-partitioning limit, not necessarily a YARN shortage.
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/rdd/RDD.scala#L550-L593">RDD.coalesce: narrow and shuffle branches</a></p>
+<p><strong>Components:</strong> RDD dependency builder → narrow coalesced partition → single writer.</p>
+<p><strong>Reproduce:</strong> Compare <code>sc.parallelize(range(1000), 8).map(str).coalesce(1)</code> with the same pipeline using <code>repartition(1)</code>; save to two fresh scratch paths. Inspect upstream versus final-stage task counts.</p>
+<p><strong>Resolve / verify:</strong> Avoid forcing one output partition unless the consumer requires it. If it does, shuffle later, after expensive parallel work; verify output equivalence and where the one-task stage now begins.</p>
+<h2 id="checkpoints-spill-and-broadcast-lifetime">Checkpoints, spill, and broadcast lifetime</h2>
+<h3 id="31-a-reliable-checkpoint-is-empty-until-an-action">31. A reliable checkpoint is empty until an action</h3>
+<p><strong>Trigger:</strong> The driver calls <code>sc.setCheckpointDir(...)</code> on shared storage and
+<code>rdd.checkpoint()</code> before its first action. <code>rdd.getCheckpointFile()</code> still returns <code>None</code>.</p>
+<ol>
+<li>The <strong>driver</strong> has marked the RDD for checkpointing; it has not eagerly written its partitions.</li>
+<li>After an action on that RDD, the checkpoint path runs a job to write partition data to
+the reliable filesystem. An uncached parent can be computed again during this write.</li>
+<li>After successful materialization Spark installs a checkpoint RDD as the new parent and
+clears the original dependencies. This differs from eviction of a cache block in case 07.</li>
+</ol>
+<p><strong>Consequence / clue:</strong> Compare <code>getCheckpointFile()</code> before and after <code>count()</code>, or look
+for <code>Done checkpointing RDD</code> in the driver log. These files checkpoint the RDD, not the
+Python driver&#39;s variables or the YARN application attempt.
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/python/pyspark/core/rdd.py#L417-L458">PySpark checkpoint example</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/rdd/ReliableCheckpointRDD.scala#L155-L187">checkpoint write job</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/rdd/RDDCheckpointData.scala#L62-L83">lineage handoff</a></p>
+<p><strong>Components:</strong> Driver checkpoint mark → filesystem write job → new RDD dependency.</p>
+<p><strong>Reproduce:</strong> Set a fresh HDFS checkpoint directory; persist a small RDD, call <code>checkpoint()</code> before its first action and inspect <code>getCheckpointFile()</code>. Call <code>count()</code> and inspect it again.</p>
+<p><strong>Resolve / verify:</strong> For durable lineage truncation, use accessible reliable storage and wait for materialization. Verify the returned checkpoint path and the shortened dependency chain; use persistence alone if the goal is only faster reuse.</p>
+<h3 id="32-a-task-spills-to-disk-and-still-succeeds">32. A task spills to disk and still succeeds</h3>
+<p><strong>Trigger:</strong> A JVM-side operation using <code>ExternalSorter</code> builds a collection that needs
+more execution memory than the task can obtain. The task is not killed.</p>
+<ol>
+<li>The <strong>executor&#39;s sorter</strong> checks its estimated collection size. At its memory threshold it
+requests more execution memory; insufficient growth can trigger a spill. A forced-spill
+threshold is another route.</li>
+<li>The sorter writes an intermediate run to local disk, releases execution memory, and
+continues. It can read and merge spilled data when producing its output.</li>
+<li>The task records memory and disk spill metrics. The estimated in-memory bytes released
+and serialized bytes actually written are different measures.</li>
+</ol>
+<p><strong>Consequence / clue:</strong> A successful stage can show both spill metrics and spend time in disk
+I/O. This is neither a YARN memory-limit kill (case 16) nor evidence that an RDD cache block
+was evicted. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/util/collection/Spillable.scala#L86-L113">Spill decision</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/util/collection/ExternalSorter.scala#L690-L703">sorter accounting</a></p>
+<p><strong>Components:</strong> ExternalSorter → execution memory manager → local spill files → merged result.</p>
+<p><strong>Reproduce:</strong> Use <code>ExternalSorterSuite</code>&#39;s <code>spilling with hash collisions</code>: it lowers the element spill threshold for a bounded fixture. Compare sorted/aggregated output and the spill path with a control that fits in memory.</p>
+<p><strong>Resolve / verify:</strong> For repeated costly spill, reduce records per partition or combine earlier before adding memory. Compare spill bytes and duration <strong>and</strong> identical output. A modest spill on a successful task needs no corrective action.</p>
+<h3 id="33-a-broadcast-works-after-unpersist-but-not-after-destroy">33. A broadcast works after unpersist but not after destroy</h3>
+<p><strong>Trigger:</strong> Two actions use <code>rates = sc.broadcast(lookup)</code>. The driver calls
+<code>rates.unpersist()</code> or <code>rates.destroy()</code> between actions, expecting identical behavior.</p>
+<ol>
+<li><code>unpersist()</code> asks Spark to remove the broadcast blocks from <strong>executors</strong>, leaving the
+driver-side broadcast valid. A later action can fetch those pieces again.</li>
+<li><code>destroy()</code> invalidates the <strong>driver&#39;s broadcast handle</strong> and also requests removal of
+driver-side state. Spark checks validity when serializing that handle again.</li>
+<li>A new closure using the destroyed broadcast cannot rely on it. To use the lookup again
+after destruction, create a new broadcast. Blocking cleanup changes waiting, not validity.</li>
+</ol>
+<p><strong>Consequence / clue:</strong> Failure preparing a later task that captures a destroyed broadcast
+is different from a live broadcast being fetched again after <code>unpersist()</code>. This is a
+user-created broadcast variable, not a SQL broadcast-join planning choice.
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/broadcast/Broadcast.scala#L86-L118">Validity and destruction</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/broadcast/TorrentBroadcast.scala#L233-L251">which blocks are removed</a></p>
+<p><strong>Components:</strong> Python broadcast handle → driver block manager → executor copies.</p>
+<p><strong>Reproduce:</strong> Broadcast a small dictionary, look it up in an RDD action, call <code>unpersist(blocking=True)</code>, and repeat. Then <code>destroy(blocking=True)</code> and submit a new closure using the same handle.</p>
+<p><strong>Resolve / verify:</strong> Use <code>unpersist</code> for evictable, reusable data and <code>destroy</code> only after its last consumer. Create a fresh broadcast for subsequent jobs and verify equal lookup results.</p>
+<h2 id="adaptive-plans-schemas-and-file-scans">Adaptive plans, schemas, and file scans</h2>
+<h3 id="34-an-adaptive-shuffle-has-fewer-reader-tasks-than-expected">34. An adaptive shuffle has fewer reader tasks than expected</h3>
+<p><strong>Trigger:</strong> An eligible SQL aggregation is planned with 200 shuffle partitions, but after
+filtering, most shuffle outputs are tiny. AQE and shuffle partition coalescing are enabled.</p>
+<ol>
+<li>Once shuffle map statistics are available, the <strong>driver&#39;s adaptive rule</strong> considers
+compatible shuffle stages together, using bytes per partition, target size, and
+parallelism constraints.</li>
+<li>Where useful, it builds new read specifications that group reducer partitions and
+rewrites the shuffle <strong>read</strong>. It need not rerun the map tasks to write fewer buckets.</li>
+<li>Downstream tasks read the groups. Unlike skew splitting in case 10, this combines small
+partitions to reduce scheduling overhead; it does not request fewer executor containers.</li>
+</ol>
+<p><strong>Consequence / clue:</strong> Inspect the <strong>final</strong> adaptive SQL plan for a coalesced <code>AQEShuffleRead</code>
+and compare map and reader task counts. An advisory size isn&#39;t a promise of a precise count.
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/adaptive/CoalesceShufflePartitions.scala#L47-L129">Coalescing decision and read rewrite</a></p>
+<p><strong>Components:</strong> Shuffle map statistics → adaptive coalescing rule → grouped reducer reads.</p>
+<p><strong>Reproduce:</strong> Group a small <code>spark.range</code> with multiple input partitions by <code>id % 5</code> using 200 initial SQL shuffle partitions. Execute with AQE enabled; compare the final adaptive plan with coalescing enabled and disabled.</p>
+<p><strong>Resolve / verify:</strong> If the smaller reader stage is faster and the five totals match, keep it. If tasks become too large, adjust the advisory size and parallelism settings against observed shuffle bytes.</p>
+<h3 id="35-a-date-filter-eliminates-entire-input-partitions">35. A date filter eliminates entire input partitions</h3>
+<p><strong>Trigger:</strong> A V1 catalog-backed Parquet table is partitioned by <code>sale_date</code>. Compare
+<code>WHERE sale_date = DATE &#39;2026-11-24&#39;</code> with a filter only on the non-partition <code>amount</code> column.</p>
+<ol>
+<li>The <strong>driver&#39;s optimizer</strong> separates eligible partition-key predicates from data
+predicates. For this catalog rule the filter must be suitable for pruning; Python UDFs
+and subqueries are not used by this rule.</li>
+<li>For the date predicate Spark asks the catalog file index for matching partitions,
+replaces the relation&#39;s file index, and updates its estimated size.</li>
+<li><strong>Scan tasks</strong> need not open the excluded dates&#39; files. The <code>amount</code> predicate may still
+benefit from Parquet filtering, but it does not identify directories by date.</li>
+</ol>
+<p><strong>Consequence / clue:</strong> Compare <code>PartitionFilters</code> in <code>explain(&quot;formatted&quot;)</code> and the scan&#39;s
+file metrics. <code>PushedFilters</code> is not proof of directory pruning.
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/PruneFileSourcePartitions.scala#L50-L94">Catalog partition pruning and statistics</a></p>
+<p><strong>Components:</strong> Catalyst partition filters → catalog file index → selected scan files.</p>
+<p><strong>Reproduce:</strong> Create a disposable V1 catalog Parquet table partitioned by <code>sale_date</code> with two dates. Compare a date equality predicate with an amount-only predicate; inspect <code>explain(&#39;formatted&#39;)</code> and scan file counts after execution.</p>
+<p><strong>Resolve / verify:</strong> Use a direct predicate on the partition key where it expresses the requested rows. Verify only the intended dates are read and keep any necessary data-column filter; predicate pushdown and directory pruning are different.</p>
+<h3 id="36-one-parquet-file-has-an-incompatible-column-type">36. One Parquet file has an incompatible column type</h3>
+<p><strong>Trigger:</strong> The report requests <code>amount INT</code>, but one batch of Parquet files contains
+a string <code>amount</code>. The file exists and its footer is readable.</p>
+<ol>
+<li>The <strong>driver</strong> supplies the read schema. An <strong>executor&#39;s vectorized Parquet reader</strong>
+chooses a column updater using both the file&#39;s physical type and Spark&#39;s requested type.</li>
+<li>For an unsupported conversion the reader throws rather than silently casting. The scan
+reports a failure with the offending path and column. Retrying identical bytes cannot fix it.</li>
+<li>The writer or batch must be identified: this is not a missing file, and skipping files
+can silently remove revenue from an otherwise successful report.</li>
+</ol>
+<p><strong>Consequence / clue:</strong> Compare the expected and actual types in the error with the schema
+of the offending file alone. <code>count()</code> can prune the column; materialize the values.
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/test/scala/org/apache/spark/sql/execution/datasources/parquet/ParquetSchemaSuite.scala#L1036-L1081">Spark schema-mismatch regression</a> · <a href="https://holdenk.github.io/spark-flowchart/details/SchemaColumnConvertNotSupportedException/">upstream diagnostic topic</a></p>
+<p><strong>Components:</strong> Driver read schema → vectorized Parquet reader → failed task → caller.</p>
+<p><strong>Reproduce:</strong> Write a scratch Parquet file with a string <code>amount</code> of <code>&#39;42&#39;</code> and read it with <code>spark.read.schema(&#39;amount INT&#39;).parquet(path).select(&#39;amount&#39;).collect()</code>, with the vectorized reader enabled. Contrast with reading the file&#39;s native string schema.</p>
+<p><strong>Resolve / verify:</strong> Read each compatible batch with its native schema, validate values, cast to the canonical type, and rewrite to a new path. Read that output back and check the type, count and total (42 for this fixture). Merely disabling vectorization is not a schema repair.</p>
+<p><img src="pyspark-yarn-media/parquet-mismatch.svg" alt="Parquet mismatch: INT requested, BINARY string encountered, read fails, and a normalized rewrite succeeds."></p>
+<h3 id="37-an-input-file-disappears-after-listing">37. An input file disappears after listing</h3>
+<p><strong>Trigger:</strong> A V1 file scan lists a partition successfully; another process removes a data
+file before its executor task opens it. The operator enables <code>ignoreCorruptFiles</code> and expects success.</p>
+<ol>
+<li>The <strong>scan task</strong> opens the planned file lazily. A missing path raises <code>FileNotFoundException</code>,
+which the scan treats separately from a corrupt record or file.</li>
+<li>With <code>ignoreMissingFiles=true</code>, it logs <code>Skipped missing file</code> and advances. With that
+option false, a missing file is not excused just because <code>ignoreCorruptFiles=true</code>.</li>
+<li>Skipping makes a successful action possible <strong>without that file&#39;s rows</strong>. It does not
+restore the file or grant blanket permission to ignore access-control or missing HDFS-block errors.</li>
+</ol>
+<p><strong>Consequence / clue:</strong> Compare executor warnings with the file listing and result counts.
+A green job after enabling the option is not evidence that the input snapshot was complete.
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/FileScanRDD.scala#L256-L290">Executor scan exception branches</a></p>
+<p><strong>Components:</strong> Driver file listing → executor opens planned split → FileScanRDD exception handling.</p>
+<p><strong>Reproduce:</strong> Write two nonempty data files to a scratch directory. Supply an explicit schema, create the DataFrame and inspect <code>inputFiles()</code> to force listing; move one data file aside, then materialize a data column. Compare runs with <code>ignoreMissingFiles</code> off and on, restoring the fixture before each listing.</p>
+<p><strong>Resolve / verify:</strong> Publish immutable input snapshots or coordinate retention with readers. Restore the missing file and verify the full expected row count; enable skipping only if partial results are explicitly acceptable.</p>
+<h2 id="file-output-on-reruns">File output on reruns</h2>
+<h3 id="38-a-rerun-succeeds-without-writing-anything">38. A rerun succeeds without writing anything</h3>
+<p><strong>Trigger:</strong> A V1 Parquet batch is rerun against an existing output directory, once with
+the default error-if-exists mode and once with <code>.mode(&quot;ignore&quot;)</code>.</p>
+<ol>
+<li>The <strong>driver&#39;s file-write command</strong> checks whether the destination exists.</li>
+<li>With <code>ErrorIfExists</code>, an existing path raises an error. With <code>Ignore</code>, the same test
+makes <code>doInsertion</code> false and Spark skips the file-write path.</li>
+<li>No new output tasks need be launched for the skipped write. Spark did not read the
+existing dataset to confirm that it contains the expected date, rows, or schema.</li>
+</ol>
+<p><strong>Consequence / clue:</strong> A successful return with unchanged files is expected under <code>ignore</code>.
+Unlike case 18, this can happen before any task or job commit. It is not a content-based
+deduplication or concurrency guarantee. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/InsertIntoHadoopFsRelationCommand.scala#L123-L152">Save-mode decision before insertion</a></p>
+<p><strong>Components:</strong> Driver save-mode check → filesystem existence check → write skipped or rejected.</p>
+<p><strong>Reproduce:</strong> Write a one-row Parquet dataset to a fresh path; attempt a different two-row write to that same path in default mode, then in <code>ignore</code> mode. Read back the path each time.</p>
+<p><strong>Resolve / verify:</strong> If a rerun should replace data, use an explicit publication policy and validate its scope first. Confirm the intended values after reading back; <code>ignore</code> should preserve the original one-row content.</p>
+<h3 id="39-overwrite-replaces-only-the-dates-written">39. Overwrite replaces only the dates written</h3>
+<p><strong>Trigger:</strong> An HDFS-backed V1 table is partitioned by date. A dynamic partition overwrite
+writes rows for Monday and Wednesday but none for Tuesday. The Hadoop file committer supports this mode.</p>
+<ol>
+<li>The <strong>driver</strong> recognizes overwrite with dynamic partition columns and dynamic overwrite
+mode. It doesn&#39;t delete matching directories up front; it uses staging for the new files.</li>
+<li><strong>Write tasks</strong> report which partition paths they actually produced. At job commit the
+<strong>driver&#39;s commit protocol</strong> collects those paths and replaces those partitions&#39; directories.</li>
+<li>Tuesday&#39;s old data remains. Conversely, old Monday rows not included in the new Monday
+output are not merged back: the unit being replaced is the <strong>partition</strong>, not an individual row.</li>
+</ol>
+<p><strong>Consequence / clue:</strong> Inspect the dates present in the input and the destination before and
+after commit. This is neither full-root overwrite nor a transactional upsert; commit behavior
+depends on the filesystem and committer. <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/InsertIntoHadoopFsRelationCommand.scala#L63-L78">Mode and staging decision</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/core/src/main/scala/org/apache/spark/internal/io/HadoopMapReduceCommitProtocol.scala#L190-L248">commit-time replacement</a></p>
+<p><strong>Components:</strong> V1 file writer → task partition paths → Hadoop committer → touched directories.</p>
+<p><strong>Reproduce:</strong> Write Monday and Tuesday to a scratch <code>partitionBy(&#39;day&#39;)</code> Parquet dataset. Overwrite it with only Monday and Wednesday using <code>.option(&#39;partitionOverwriteMode&#39;,&#39;dynamic&#39;)</code> and a supporting committer.</p>
+<p><strong>Resolve / verify:</strong> Use dynamic overwrite for replacement of touched dates, not per-row merge or full refresh. Verify Monday is replaced, Tuesday unchanged, Wednesday added; reconcile keys if duplicates or row-level updates matter.</p>
+<h3 id="40-one-successful-task-creates-three-data-files">40. One successful task creates three data files</h3>
+<p><strong>Trigger:</strong> A single successful V1 writer task receives 2,500 rows for an unpartitioned
+output directory with <code>.option(&quot;maxRecordsPerFile&quot;, 1000)</code>.</p>
+<ol>
+<li>The <strong>driver&#39;s file writer</strong> resolves the write option, falling back to the SQL configuration
+if the option is absent, and puts that limit in the description sent to tasks.</li>
+<li>The <strong>executor writer</strong> counts records in the current file. Before writing the next row
+after reaching the cap, it closes that writer, increments the file counter, and opens another.</li>
+<li>This one task writes <strong>1,000 + 1,000 + 500</strong> rows to three files. No extra Spark partition,
+executor, or speculative attempt is needed.</li>
+</ol>
+<p><strong>Consequence / clue:</strong> Compare data filenames with distinct <code>c000</code>, <code>c001</code>, <code>c002</code> counters
+against the single successful task in the Stages UI. The cap limits <strong>rows</strong>, not file size
+in bytes; exclude markers such as <code>_SUCCESS</code> when counting data files.
+<a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/FileFormatWriter.scala#L133-L146">Option precedence</a> · <a href="https://github.com/apache/spark/blob/dada2a6db5d73b152d6ba16e4fe21406f86abfe3/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/FileFormatDataWriter.scala#L155-L198">file rollover in the task</a></p>
+<p><strong>Components:</strong> Write option → task writer counter → roll files within one task → job commit.</p>
+<p><strong>Reproduce:</strong> Run <code>spark.range(2500, numPartitions=1).write.option(&#39;maxRecordsPerFile&#39;,1000).parquet(path)</code> on a fresh scratch path. Group the read-back rows by <code>input_file_name()</code> and count each group.</p>
+<p><strong>Resolve / verify:</strong> If rollover alone created unwanted tiny files, raise or remove the cap and repeat in a new directory. Verify counts of 1,000/1,000/500 before and 2,500 total after; for many writer tasks also inspect partitioning.</p>
+</main></html>
